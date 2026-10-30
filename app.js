@@ -34,6 +34,15 @@ const EXAMPLES = {
   'fol-invalid-exists': { name: '存在不能推全称', premises: ['∃x P(x)'], conclusion: '∀x P(x)' },
   'fol-invalid-order': { name: '全称存在不能交换', premises: ['∀x ∃y R(x, y)'], conclusion: '∃y ∀x R(x, y)' },
   'fol-invalid-converse': { name: '肯定后件谓词版', premises: ['∀x (P(x) → Q(x))', '∃x Q(x)'], conclusion: '∃x P(x)' },
+  'def-expand': { name: '定义展开', premises: ['P ≝ Q ∧ R', 'Q', 'R'], conclusion: 'P' },
+  'def-invalid': { name: '定义不能跳步', premises: ['P ≝ Q → R', 'Q'], conclusion: 'P' },
+  'eq-reflexive': { name: '相等自反', premises: [], conclusion: 'a = a' },
+  'eq-symmetric': { name: '相等对称', premises: ['a = b'], conclusion: 'b = a' },
+  'eq-transitive': { name: '相等传递', premises: ['a = b', 'b = c'], conclusion: 'a = c' },
+  'eq-substitute': { name: '等词替换', premises: ['a = b', 'P(a)'], conclusion: 'P(b)' },
+  'eq-distinct': { name: '不相等推出存在不同对象', premises: ['a ≠ b'], conclusion: '∃x ∃y x ≠ y' },
+  'eq-quantifier': { name: '相等与全称', premises: ['∀x (x = a → P(x))'], conclusion: 'P(a)' },
+  'eq-invalid': { name: '无相等不能替换', premises: ['P(a)'], conclusion: 'P(b)' },
 };
 
 let nextId = 1;
@@ -223,7 +232,7 @@ function insertSymbol(symbol) {
   if (symbol === '()') {
     inserted = `(${selected})`;
     caret = start + 1 + selected.length + (selected ? 1 : 0);
-  } else if (['∧', '∨', '→', '↔', '⊕', '↑', '↓', '←'].includes(symbol)) {
+  } else if (['∧', '∨', '→', '↔', '⊕', '↑', '↓', '←', '≝', '≔', '=', '≠'].includes(symbol)) {
     const prefix = left && !/\s$/.test(left) ? ' ' : '';
     const suffix = !right || !/^\s/.test(right) ? ' ' : '';
     inserted = `${prefix}${symbol}${suffix}`;
@@ -349,7 +358,7 @@ function renderFirstOrderResult() {
       : `<div class="result-metric"><strong>${proofStats?.nodes ?? 0}</strong><span>搜索节点</span></div><div class="result-metric"><strong>${countermodelSearch?.maxDomain ?? 3}</strong><span>最大论域</span></div><div class="result-metric"><strong>—</strong><span>结论</span></div>`;
   const extra = valid === null
     ? '<div class="result-note">可尝试简化公式、补充中间前提，或检查量词辖域。证明搜索失败不会被当作无效；只有显式反例模型才能推翻论证。</div>'
-    : `<div class="result-note">${valid === true ? '量词规则的本征常项条件已自动检查。' : '反例模型的谓词解释与真假评估见下方。'}</div><button class="counterexample-link" type="button" id="show-proof">${valid === true ? '查看自然演绎证明' : '查看反例模型'} ${icon('arrow')}</button>`;
+    : `<div class="result-note">${valid === true ? '量词、定义与等词规则的条件已自动检查。' : '反例模型的谓词解释与真假评估见下方。'}</div><button class="counterexample-link" type="button" id="show-proof">${valid === true ? '查看自然演绎证明' : '查看反例模型'} ${icon('arrow')}</button>`;
   $('#result-content').innerHTML = `<div><div class="result-banner"><span class="result-emblem">${icon(valid === true ? 'check' : valid === false ? 'x' : 'info')}</span><div><h3>${title}</h3><p>${english}</p></div></div><p class="result-explanation">${explanation}</p><div class="result-metrics">${metrics}</div>${extra}</div>`;
   $('#show-proof')?.addEventListener('click', () => $('#proof-card').scrollIntoView({ behavior: 'smooth', block: 'start' }));
 }
@@ -459,7 +468,7 @@ function renderProof() {
   const description = $('#proof-description');
   if (result.proofSteps?.length) {
     tag.textContent = '已证明';
-    description.textContent = '每一步都标注规则与依赖行；量词规则附带本征常项条件。证明已通过独立规则校验。';
+    description.textContent = '每一步都标注规则与依赖行；量词、定义与等词规则附带适用条件。证明已通过独立规则校验。';
     const lines = result.proofSteps.map(step => `<li class="proof-line depth-${Math.min(step.depth, 6)} ${step.rule === 'assumption' ? 'assumption' : ''}" style="--depth:${step.depth}"><span class="proof-line-number">${step.line}</span><span class="proof-formula">${escapeHTML(step.formatted)}</span><span class="proof-rule">${escapeHTML(step.ruleLabel)}${step.refs.length ? `<span class="proof-refs">[${step.refs.join(', ')}]</span>` : ''}</span>${step.note ? `<span class="proof-note">${escapeHTML(step.note)}</span>` : ''}</li>`).join('');
     $('#proof-content').innerHTML = `<ol class="proof-lines" aria-label="自然演绎证明步骤">${lines}</ol><p class="proof-footer">最终行即为目标结论。缩进表示子证明：假设在子证明内引入，并在对应引入规则处解除。</p>`;
     return;
@@ -542,7 +551,7 @@ function loadExample(key) {
   state.premises = example.premises.map(makeField);
   state.conclusion = makeField(example.conclusion);
   state.example = key;
-  activeId = state.premises[0].id;
+  activeId = state.premises[0]?.id || state.conclusion.id;
   lastDeleted = null;
   clearTimeout(toastTimer);
   $('#toast').classList.remove('visible');

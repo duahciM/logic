@@ -76,6 +76,6 @@ export function analyzeArgument({ premises = [], conclusion = '' } = {}, options
     contradictoryPremises: false, tautologicalConclusion: false,
     proof: proof?.proof ?? null, proofSteps: proof?.steps ?? [], proofStats: proof?.stats ?? null, proofVerified: Boolean(proof?.verification?.ok),
     countermodel: countermodelSearch?.found ? countermodelSearch.model : null, countermodelSearch,
-    conditional: formatFol({ type: 'implies', left: folPremises.reduce((left, formula) => left ? { type: 'and', left, right: formula } : { type: 'constant', value: true }), right: folConclusion }),
+    conditional: formatFol({ type: 'implies', left: folPremises.reduce((left, formula) => ({ type: 'and', left, right: formula }), { type: 'constant', value: true }), right: folConclusion }),
   };
 }

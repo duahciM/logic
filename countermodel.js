@@ -17,6 +17,8 @@ function signature(formulas) {
       if (previous !== undefined && previous !== node.args.length) throw new Error(`谓词 ${node.name} 的参数个数不一致。`);
       predicates.set(node.name, node.args.length);
       for (const arg of node.args) if (arg.kind === 'constant') constants.add(arg.name);
+    } else if (node.type === 'equals') {
+      for (const arg of [node.left, node.right]) if (arg.kind === 'constant') constants.add(arg.name);
     } else if (node.type === 'not') visit(node.child);
     else if (node.type === 'forall' || node.type === 'exists') visit(node.child);
     else if (node.left) { visit(node.left); visit(node.right); }
@@ -43,15 +45,17 @@ function* mappings(names, size, limit) {
   yield* rec(0);
 }
 
+function termIndex(term, env, mapping) {
+  const value = term.kind === 'variable' ? env[term.name] : mapping[term.name];
+  if (value === undefined) throw new Error(`缺少项 ${term.name} 的解释。`);
+  return value;
+}
 function ground(node, env, size, mapping) {
   if (node.type === 'predicate') {
-    const indices = node.args.map(arg => {
-      const value = arg.kind === 'variable' ? env[arg.name] : mapping[arg.name];
-      if (value === undefined) throw new Error(`缺少项 ${arg.name} 的解释。`);
-      return value;
-    });
+    const indices = node.args.map(arg => termIndex(arg, env, mapping));
     return { type: 'variable', name: `${node.name}#${indices.join(',')}` };
   }
+  if (node.type === 'equals') return { type: 'constant', value: termIndex(node.left, env, mapping) === termIndex(node.right, env, mapping) };
   if (node.type === 'constant') return node;
   if (node.type === 'not') return { type: 'not', child: ground(node.child, env, size, mapping) };
   if (node.type === 'forall' || node.type === 'exists') {
@@ -99,13 +103,14 @@ function simplify(node, assignment) {
       return { type: 'implies', left, right };
     case 'reverse':
       return simplify({ type: 'implies', left: right, right: left }, assignment);
+    case 'definition':
     case 'iff':
       if (l !== null && r !== null) return { type: 'constant', value: l === r };
       if (l === true) return right;
       if (r === true) return left;
       if (l === false) return simplify({ type: 'not', child: right }, assignment);
       if (r === false) return simplify({ type: 'not', child: left }, assignment);
-      return { type: 'iff', left, right };
+      return { type: node.type, left, right };
     case 'xor':
       if (l !== null && r !== null) return { type: 'constant', value: l !== r };
       if (l === false) return right;
@@ -145,12 +150,17 @@ function dpll(node, assignment, budget) {
   return dpll(simplified, { ...assignment, [variable]: false }, budget);
 }
 
+function modelTermIndex(term, model, env) {
+  const value = term.kind === 'variable' ? env[term.name] : model.constants[term.name];
+  if (value === undefined) throw new Error(`缺少项 ${term.name} 的解释。`);
+  return value;
+}
 export function evaluateFormula(node, model, env = {}) {
   if (node.type === 'predicate') {
-    const indices = node.args.map(arg => arg.kind === 'variable' ? env[arg.name] : model.constants[arg.name]);
-    if (indices.some(value => value === undefined)) throw new Error(`缺少项 ${arg.name} 的解释。`);
+    const indices = node.args.map(arg => modelTermIndex(arg, model, env));
     return model.predicates[node.name].has(indices.join(','));
   }
+  if (node.type === 'equals') return modelTermIndex(node.left, model, env) === modelTermIndex(node.right, model, env);
   if (node.type === 'constant') return node.value;
   if (node.type === 'not') return !evaluateFormula(node.child, model, env);
   if (node.type === 'forall' || node.type === 'exists') {
@@ -169,6 +179,7 @@ export function evaluateFormula(node, model, env = {}) {
     case 'implies': return !left || right;
     case 'reverse': return !right || left;
     case 'iff': return left === right;
+    case 'definition': return left === right;
     case 'xor': return left !== right;
     case 'nand': return !(left && right);
     case 'nor': return !(left || right);

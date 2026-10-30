@@ -3,13 +3,15 @@
  * first-order logic. A returned proof is independently checked by verifyProof.
  * Failure to find a proof is NOT a validity decision.
  */
-import { alphaKey, equal, format, freeVariables, substituteTerm, collectTerms, freshConstant } from './fol.js';
+import { alphaKey, equal, equalTerm, format, freeVariables, substituteTerm, collectTerms, freshConstant, freeTermOccurrences, replaceTermOccurrences, termAtPath, termPathKey } from './fol.js';
 
 export const RULE_LABELS = Object.freeze({
   premise: '前提', assumption: '假设', andI: '合取引入 ∧I', andE1: '合取消除 ∧E₁', andE2: '合取消除 ∧E₂',
   orI1: '析取引入 ∨I₁', orI2: '析取引入 ∨I₂', orE: '析取消除 ∨E',
   impliesI: '蕴涵引入 →I', impliesE: '蕴涵消除 →E', iffI: '等价引入 ↔I', iffE1: '等价消除 ↔E₁', iffE2: '等价消除 ↔E₂',
   notI: '否定引入 ¬I', notE: '否定消除 ¬E', raa: '归谬法 RAA', bottomE: '爆炸原理 ⊥E', truthI: '恒真引入 ⊤I',
+  definitionI: '定义引入 ≝I', definitionE1: '定义消除 ≝E₁', definitionE2: '定义消除 ≝E₂',
+  equalsI: '相等引入 =I', equalsE: '等词替换 =E',
   forallI: '全称引入 ∀I', forallE: '全称消除 ∀E', existsI: '存在引入 ∃I', existsE: '存在消除 ∃E',
 });
 const FALSE = { type: 'constant', value: false };
@@ -88,6 +90,7 @@ export class Search {
     {
       const exact = context.find(entry => equal(entry.formula, goal));
       if (exact) return exact.node;
+      if (goal.type === 'equals' && equalTerm(goal.left, goal.right)) return this.make('equalsI', goal);
       if (equal(goal, TRUE)) return this.make('truthI', goal);
       if (equal(goal, FALSE)) return this.contradiction(context, depth);
 
@@ -100,11 +103,12 @@ export class Search {
       } else if (goal.type === 'implies') {
         const sub = this.subproof(goal.left, goal.right, context, depth + 1);
         if (sub) return this.make('impliesI', goal, { subproofs: [sub] });
-      } else if (goal.type === 'iff') {
+      } else if (goal.type === 'iff' || goal.type === 'definition') {
+        const rule = goal.type === 'definition' ? 'definitionI' : 'iffI';
         const left = this.subproof(goal.left, goal.right, context, depth + 1);
         if (left) {
           const right = this.subproof(goal.right, goal.left, context, depth + 1);
-          if (right) return this.make('iffI', goal, { subproofs: [left, right] });
+          if (right) return this.make(rule, goal, { subproofs: [left, right] });
         }
       } else if (goal.type === 'not') {
         const sub = this.subproof(goal.child, FALSE, context, depth + 1);
@@ -162,7 +166,28 @@ export class Search {
         }
       }
     }
+    for (const entry of context) {
+      if (entry.formula.type !== 'not') continue;
+      const positive = this.prove(entry.formula.child, context, depth + 1);
+      if (positive) return this.make('notE', FALSE, { children: [positive, entry.node] });
+    }
     return this.useContext(FALSE, context, depth);
+  }
+  useEquality(equation, node, goal, context, depth, eliminationDepth) {
+    if (eliminationDepth > 3 || depth > this.maxDepth) return null;
+    for (const [from, to] of [[equation.left, equation.right], [equation.right, equation.left]]) {
+      const paths = freeTermOccurrences(goal, to, from);
+      if (!paths.length) continue;
+      const candidates = paths.slice(0, 8).map(path => [path]);
+      if (paths.length > 1) candidates.push(paths.slice(0, 8));
+      for (const selected of candidates) {
+        const rewritten = replaceTermOccurrences(goal, selected, from);
+        if (equal(rewritten, goal)) continue;
+        const proof = this.prove(rewritten, context, depth + 1);
+        if (proof) return this.make('equalsE', goal, { children: [node, proof], from, to, paths: selected });
+      }
+    }
+    return null;
   }
   useContext(goal, context, depth) {
     const ordered = [...context].reverse();
@@ -188,17 +213,20 @@ export class Search {
       const consequent = this.make('impliesE', formula.right, { children: [node, antecedent] });
       return this.useFormula(formula.right, consequent, goal, context, depth, eliminationDepth + 1);
     }
-    if (formula.type === 'iff') {
+    if (formula.type === 'iff' || formula.type === 'definition') {
+      const first = formula.type === 'definition' ? 'definitionE1' : 'iffE1';
+      const second = formula.type === 'definition' ? 'definitionE2' : 'iffE2';
       if (equal(formula.left, goal)) {
         const right = this.prove(formula.right, context, depth + 1);
-        if (right) return this.make('iffE1', goal, { children: [node, right] });
+        if (right) return this.make(first, goal, { children: [node, right] });
       }
       if (equal(formula.right, goal)) {
         const left = this.prove(formula.left, context, depth + 1);
-        if (left) return this.make('iffE2', goal, { children: [node, left] });
+        if (left) return this.make(second, goal, { children: [node, left] });
       }
       return null;
     }
+    if (formula.type === 'equals') return this.useEquality(formula, node, goal, context, depth, eliminationDepth);
     if (formula.type === 'forall') {
       if (eliminationDepth > 3) return null;
       for (const witness of this.witnesses(context, goal).slice(0, 6)) {
@@ -266,6 +294,33 @@ export function verifyProof(root, premises, conclusion) {
         break;
       case 'assumption': break;
       case 'truthI': check(node, TRUE); break;
+      case 'equalsI':
+        if (children.length || node.formula.type !== 'equals' || !equalTerm(node.formula.left, node.formula.right)) return fail('=I 结构无效。');
+        break;
+      case 'equalsE': {
+        if (children.length !== 2 || children[0].formula.type !== 'equals' || !node.from || !node.to || !Array.isArray(node.paths) || !node.paths.length) return fail('=E 结构无效。');
+        const equation = children[0].formula;
+        const oriented = (equalTerm(equation.left, node.from) && equalTerm(equation.right, node.to)) || (equalTerm(equation.left, node.to) && equalTerm(equation.right, node.from));
+        if (!oriented) return fail('=E 的替换项与等式不一致。');
+        const source = children[1].formula;
+        const allowed = new Set(freeTermOccurrences(source, node.from, node.to).map(termPathKey));
+        for (const path of node.paths) {
+          if (!Array.isArray(path) || !allowed.has(termPathKey(path))) return fail('=E 替换了不存在、受约束或会捕获变量的项。');
+          if (!equalTerm(termAtPath(source, path), node.from)) return fail('=E 替换位置不是源项。');
+        }
+        check(node, replaceTermOccurrences(source, node.paths, node.to));
+        break;
+      }
+      case 'definitionI':
+        if (subs.length !== 2 || node.formula.type !== 'definition') return fail('≝I 结构无效。');
+        check(subs[0].assumptionNode, node.formula.left); check(subs[0].proof, node.formula.right);
+        check(subs[1].assumptionNode, node.formula.right); check(subs[1].proof, node.formula.left); break;
+      case 'definitionE1':
+        if (children.length !== 2 || children[0].formula.type !== 'definition') return fail('≝E₁ 结构无效。');
+        check(children[1], children[0].formula.right); check(node, children[0].formula.left); break;
+      case 'definitionE2':
+        if (children.length !== 2 || children[0].formula.type !== 'definition') return fail('≝E₂ 结构无效。');
+        check(children[1], children[0].formula.left); check(node, children[0].formula.right); break;
       case 'andI':
         if (children.length !== 2 || node.formula.type !== 'and') return fail('∧I 结构无效。');
         check(children[0], node.formula.left); check(children[1], node.formula.right); break;
@@ -368,6 +423,9 @@ export function flattenProof(root) {
     if (node.rule === 'existsE') notes.push(`本征常项 ${node.eigen.name} 不在结论或其他开放假设中出现`);
     if (node.rule === 'forallE') notes.push(`以 ${node.term.name} 实例化`);
     if (node.rule === 'existsI') notes.push(`以 ${node.term.name} 为见证`);
+    if (node.rule === 'equalsI') notes.push('同一项与自身相等');
+    if (node.rule === 'equalsE') notes.push(`把 ${node.from.name} 替换为 ${node.to.name}`);
+    if (node.rule === 'definitionI' || node.rule === 'definitionE1' || node.rule === 'definitionE2') notes.push('定义按双向等价处理');
     lines.push({ line, depth, formula: node.formula, formatted: format(node.formula), rule: node.rule, ruleLabel: RULE_LABELS[node.rule] || node.rule, refs: [...new Set(refs)], note: notes.join('；') });
     return line;
   }
