@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#7561d5">
-  <meta name="description" content="点选逻辑符号，构建你的论证。逻辑工坊提供论证有效性检验、完整真值表与无效论证的中文反例解释。计算在本地完成，小模型仅在授权后按需下载。">
+  <meta name="description" content="点选逻辑符号，构建你的论证。逻辑工坊提供命题与量词公式的有效性检验、自然演绎证明、真值表、有限反例模型与中文解释。计算在本地完成，小模型仅在授权后按需下载。">
   <title>逻辑工坊 · 论证有效性检验</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
@@ -79,6 +79,15 @@
               <button type="button" data-symbol="C" aria-label="插入变量 C">C</button>
               <button type="button" data-symbol="D" aria-label="插入变量 D">D</button>
             </div>
+            <h3 class="extended-label">个体词项 <span>TERMS</span></h3>
+            <div class="variable-grid term-grid">
+              <button type="button" data-symbol="x" aria-label="插入个体变量 x">x</button>
+              <button type="button" data-symbol="y" aria-label="插入个体变量 y">y</button>
+              <button type="button" data-symbol="z" aria-label="插入个体变量 z">z</button>
+              <button type="button" data-symbol="a" aria-label="插入个体常项 a">a</button>
+              <button type="button" data-symbol="b" aria-label="插入个体常项 b">b</button>
+              <button type="button" data-symbol="c" aria-label="插入个体常项 c">c</button>
+            </div>
           </div>
           <div class="palette-section operator-section">
             <h3>逻辑连接词 <span>CONNECTIVES</span></h3>
@@ -101,6 +110,15 @@
               <button type="button" data-symbol="⊤"><span>⊤</span>恒真</button>
               <button type="button" data-symbol="⊥"><span>⊥</span>恒假</button>
             </div>
+            <h3 class="extended-label">量词与谓词 <span>QUANTIFIERS</span></h3>
+            <div class="operator-grid quantifier-operators">
+              <button type="button" data-symbol="∀x " title="全称量词：对任意 x"><span class="operator-symbol">∀x</span><span>全称<small>对任意</small></span></button>
+              <button type="button" data-symbol="∃x " title="存在量词：存在 x"><span class="operator-symbol">∃x</span><span>存在<small>至少一个</small></span></button>
+              <button type="button" data-symbol="P(x)" title="一元谓词 P"><span class="operator-symbol">P(x)</span><span>谓词<small>性质</small></span></button>
+              <button type="button" data-symbol="Q(x)" title="一元谓词 Q"><span class="operator-symbol">Q(x)</span><span>谓词<small>性质</small></span></button>
+              <button type="button" data-symbol="R(x, y)" title="二元谓词 R"><span class="operator-symbol">R(x,y)</span><span>关系<small>二元谓词</small></span></button>
+              <button type="button" data-symbol="()" title="括号：限定量词辖域"><span class="operator-symbol">( )</span><span>辖域<small>建议加括号</small></span></button>
+            </div>
           </div>
           <div class="palette-section editing-section">
             <h3>编辑工具 <span>EDIT</span></h3>
@@ -118,7 +136,7 @@
       <section class="card editor-card" aria-labelledby="editor-title">
         <div class="card-heading"><h2><span class="section-number">02</span><span id="editor-title">构建你的论证</span></h2><button class="text-button" id="edit-meanings" type="button"><svg class="icon"><use href="#i-settings"/></svg>命题含义</button></div>
         <p class="card-description">写下已知的前提，以及你想推出的结论。</p>
-        <div class="example-picker"><svg class="icon"><use href="#i-spark"/></svg><label for="example-select">不妨从一个例子开始</label><div class="select-wrap"><select id="example-select" aria-label="载入示例论证"><option value="mp">肯定前件</option><optgroup label="有效论证"><option value="mp">肯定前件 · Modus ponens</option><option value="mt">否定后件 · Modus tollens</option><option value="hs">假言三段论</option><option value="ds">选言三段论</option><option value="cd">二难推理</option><option value="conj">合取引入</option><option value="explosion">矛盾前提</option><option value="xor">异或选言</option><option value="nand">与非德摩根律</option></optgroup><optgroup label="无效论证"><option value="ac">肯定后件谬误</option><option value="da">否定前件谬误</option><option value="xor-fallacy">把相容析取当异或</option><option value="nand-fallacy">误用与非</option></optgroup><option value="custom" disabled>自定义论证</option></select></div></div>
+        <div class="example-picker"><svg class="icon"><use href="#i-spark"/></svg><label for="example-select">不妨从一个例子开始</label><div class="select-wrap"><select id="example-select" aria-label="载入示例论证"><option value="mp">肯定前件</option><optgroup label="有效论证"><option value="mp">肯定前件 · Modus ponens</option><option value="mt">否定后件 · Modus tollens</option><option value="hs">假言三段论</option><option value="ds">选言三段论</option><option value="cd">二难推理</option><option value="conj">合取引入</option><option value="explosion">矛盾前提</option><option value="xor">异或选言</option><option value="nand">与非德摩根律</option></optgroup><optgroup label="量词与自然演绎"><option value="fol-mp">全称三段论 · ∀x(P→Q), ∀xP ⊢ ∀xQ</option><option value="fol-exists">全称到存在 · ∀xP ⊢ ∃xP</option><option value="fol-exists-and">存在合取 · ∃x(P∧Q) ⊢ ∃xP</option><option value="fol-syllogism">存在三段论 · ∃xP ⊢ ∃xQ</option><option value="fol-not-exists">量词否定 · ¬∃xP ⊢ ∀x¬P</option><option value="fol-order">量词交换 · ∃x∀yR ⊢ ∀y∃xR</option></optgroup><optgroup label="量词无效论证"><option value="fol-invalid-exists">存在不能推全称 · ∃xP ⊢ ∀xP</option><option value="fol-invalid-order">全称存在不能交换 · ∀x∃yR ⊢ ∃y∀xR</option><option value="fol-invalid-converse">肯定后件谓词版 · ∃xQ ⊢ ∃xP</option></optgroup><optgroup label="无效论证"><option value="ac">肯定后件谬误</option><option value="da">否定前件谬误</option><option value="xor-fallacy">把相容析取当异或</option><option value="nand-fallacy">误用与非</option></optgroup><option value="custom" disabled>自定义论证</option></select></div></div>
         <div class="field-section-label"><span>前提</span><span>PREMISES</span><span class="field-label-line"></span></div>
         <div id="premises" class="premises"></div>
         <button class="add-premise" id="add-premise" type="button"><svg class="icon"><use href="#i-plus"/></svg>添加前提<span id="premise-count">1 / 8</span></button>
@@ -138,9 +156,9 @@
         <section class="card translation-card" id="translation-card" aria-labelledby="translation-title" hidden>
           <div class="card-heading"><h2><svg class="icon heading-icon"><use href="#i-language"/></svg><span id="translation-title">这个推理，哪里跳步了？</span></h2><button class="icon-button" id="copy-translation" type="button" aria-label="复制自然语言翻译" title="复制翻译"><svg class="icon"><use href="#i-copy"/></svg></button></div>
           <p class="card-description">只在无效时展开，把推理的跳步说清楚。</p>
-          <div class="invalid-only-label"><span></span>真值表已找到反例</div>
+          <div class="invalid-only-label" id="invalid-only-label"><span></span>真值表已找到反例</div>
           <div id="translation-content" class="translation-content"></div>
-          <div class="model-panel">
+          <div class="model-panel" id="model-panel">
             <div class="model-heading"><span><svg class="icon"><use href="#i-spark"/></svg>本地小模型</span><span class="small-tag">Qwen2.5 · 0.5B</span></div>
             <p>把已验证的反例改写得更通俗。模型不改判有效性，也不证明现实中的结论为假。</p>
             <div class="model-controls"><button class="button button-primary button-small" id="enable-model" type="button"><svg class="icon"><use href="#i-download"/></svg><span>下载并启用小模型</span></button><button class="text-button" id="cancel-model" type="button" hidden>停止 / 卸载</button></div>
@@ -152,6 +170,11 @@
         </section>
       </aside>
 
+      <section class="card proof-card" id="proof-card" aria-labelledby="proof-title" hidden>
+        <div class="proof-heading"><div><h2 id="proof-title"><svg class="icon heading-icon"><use href="#i-book"/></svg>自然演绎证明<span class="small-tag" id="proof-tag">语法推导</span></h2><p class="card-description" id="proof-description">每一步都标注规则与依赖行；量词规则附带本征常项条件。</p></div><button class="button button-small button-white" id="copy-proof" type="button"><svg class="icon"><use href="#i-copy"/></svg>复制证明</button></div>
+        <div id="proof-content" class="proof-content"></div>
+      </section>
+
       <section class="card truth-card" aria-labelledby="truth-title">
         <div class="truth-heading"><div><h2 id="truth-title"><svg class="icon heading-icon"><use href="#i-table"/></svg>真值表<span class="small-tag" id="truth-count">4 种赋值</span></h2><p class="card-description">逐一检查所有可能，让反例无处藏身。</p></div><button class="button button-small button-white" id="export-table" type="button"><svg class="icon"><use href="#i-download"/></svg>导出 CSV</button></div>
         <div class="table-toolbar"><div class="table-filters" role="group" aria-label="筛选真值表"><button type="button" class="selected" data-filter="all" aria-pressed="true">全部赋值<span id="all-row-count">4</span></button><button type="button" data-filter="critical" aria-pressed="false">前提全真<span id="critical-row-count">1</span></button><button type="button" data-filter="counterexample" aria-pressed="false">反例<span id="counterexample-count">0</span></button></div><span class="table-legend"><i></i>浅绿色行：前提全部为真</span></div>
@@ -159,16 +182,17 @@
         <div class="table-footer"><span><b>T</b> 为真 <span class="legend-separator">/</span> <b>F</b> 为假<span class="table-footer-explanation"> · 只有“前提全真、结论为假”的行，才能推翻论证。</span></span><div class="pagination" id="pagination"><button class="icon-button" id="prev-page" type="button" aria-label="上一页"><svg class="icon rotate-180"><use href="#i-chevron"/></svg></button><span id="page-label">1 / 1</span><button class="icon-button" id="next-page" type="button" aria-label="下一页"><svg class="icon"><use href="#i-chevron"/></svg></button></div></div>
       </section>
     </div>
-    <footer class="site-footer"><span><span class="footer-mark">∴</span> 逻辑工坊 <span class="footer-dot">·</span> 给思考一点确定性</span><span>经典命题逻辑 <span class="footer-dot">/</span> 为好奇心而造 <svg class="icon"><use href="#i-spark"/></svg></span></footer>
+    <footer class="site-footer"><span><span class="footer-mark">∴</span> 逻辑工坊 <span class="footer-dot">·</span> 给思考一点确定性</span><span>经典逻辑 · 自然演绎 <span class="footer-dot">/</span> 为好奇心而造 <svg class="icon"><use href="#i-spark"/></svg></span></footer>
   </main>
 
   <dialog id="help-dialog" class="modal help-modal" aria-labelledby="help-title">
     <div class="modal-heading"><div><span class="eyebrow">A LITTLE GUIDE</span><h2 id="help-title">从这里，开始清晰思考。</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="关闭使用指南"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <div class="guide-steps"><div><span>1</span><h3>构建论证</h3><p>点击前提或结论输入框，再点选变量和连接词。每条前提与结论都应是一条完整的命题公式。</p></div><div><span>2</span><h3>验证有效性</h3><p>点击“验证论证”。只要不存在“所有前提都真、结论却假”的情况，论证就是有效的。</p></div><div><span>3</span><h3>读懂结果</h3><p>有效论证只显示验证结果。无效时才展示反例的中文解释；可授权下载小模型，在本机进一步改写。</p></div></div>
     <h3 class="guide-section-title">连接词速查</h3>
-    <div class="guide-table-wrap"><table class="guide-table"><thead><tr><th>符号</th><th>名称</th><th>自然语言</th><th>何时为真</th></tr></thead><tbody><tr><td>¬P</td><td>否定</td><td>并非 P</td><td>P 为假</td></tr><tr><td>P ∧ Q</td><td>合取</td><td>P，并且 Q</td><td>两者都真</td></tr><tr><td>P ∨ Q</td><td>相容析取</td><td>P，或者 Q</td><td>至少一个为真</td></tr><tr><td>P → Q</td><td>实质蕴涵</td><td>如果 P，那么 Q</td><td>P 为假，或 Q 为真</td></tr><tr><td>P ↔ Q</td><td>等价</td><td>P，当且仅当 Q</td><td>两者真假相同</td></tr><tr><td>P ⊕ Q</td><td>异或</td><td>要么 P，要么 Q</td><td>恰好一个为真</td></tr><tr><td>P ↑ Q</td><td>与非</td><td>并非两者都真</td><td>至少一个为假</td></tr><tr><td>P ↓ Q</td><td>或非</td><td>两者都不真</td><td>两者都假</td></tr><tr><td>P ← Q</td><td>反向蕴涵</td><td>如果 Q，那么 P</td><td>Q 为假，或 P 为真</td></tr></tbody></table></div>
-    <div class="guide-note"><svg class="icon"><use href="#i-info"/></svg><p><strong>几个小约定</strong><br>运算优先级：¬ &gt; ∧/↑ &gt; ∨/⊕/↓ &gt; →/← &gt; ↔；用括号消除歧义。→ 右结合，← 左结合；混用两种箭头必须加括号。“或者”允许两者同时成立；→ 表示实质蕴涵，不表示因果关系。前提互相矛盾时，经典逻辑下论证有效，但不代表结论真实。空前提的论证有效，当且仅当结论是重言式。</p></div>
-    <p class="guide-scope">适用范围：经典二值命题逻辑，最多 10 个变量、8 条前提。不支持谓词、量词（∀ / ∃）或模态词；自然语言翻译是按连接词逐层转换，不是对现实事实的判断。小模型只解释无效论证的反例，可能措辞不准；以真值表和反例直译为准。公式与含义不上传，权重从 Hugging Face 按需下载。</p>
+    <div class="guide-table-wrap"><table class="guide-table"><thead><tr><th>符号</th><th>名称</th><th>自然语言</th><th>何时为真</th></tr></thead><tbody><tr><td>¬P</td><td>否定</td><td>并非 P</td><td>P 为假</td></tr><tr><td>P ∧ Q</td><td>合取</td><td>P，并且 Q</td><td>两者都真</td></tr><tr><td>P ∨ Q</td><td>相容析取</td><td>P，或者 Q</td><td>至少一个为真</td></tr><tr><td>P → Q</td><td>实质蕴涵</td><td>如果 P，那么 Q</td><td>P 为假，或 Q 为真</td></tr><tr><td>P ↔ Q</td><td>等价</td><td>P，当且仅当 Q</td><td>两者真假相同</td></tr><tr><td>P ⊕ Q</td><td>异或</td><td>要么 P，要么 Q</td><td>恰好一个为真</td></tr><tr><td>P ↑ Q</td><td>与非</td><td>并非两者都真</td><td>至少一个为假</td></tr><tr><td>P ↓ Q</td><td>或非</td><td>两者都不真</td><td>两者都假</td></tr><tr><td>P ← Q</td><td>反向蕴涵</td><td>如果 Q，那么 P</td><td>Q 为假，或 P 为真</td></tr><tr><td>∀x φ</td><td>全称量词</td><td>对任意 x，φ</td><td>论域中每个对象都使 φ 成立</td></tr><tr><td>∃x φ</td><td>存在量词</td><td>存在 x，使得 φ</td><td>论域中至少一个对象使 φ 成立</td></tr><tr><td>P(x)</td><td>一元谓词</td><td>x 具有性质 P</td><td>对象 x 落在 P 的解释中</td></tr><tr><td>R(x, y)</td><td>二元谓词</td><td>x 与 y 有关系 R</td><td>有序对 (x, y) 落在 R 的解释中</td></tr></tbody></table></div>
+    <div class="guide-note"><svg class="icon"><use href="#i-info"/></svg><p><strong>几个小约定</strong><br>运算优先级：¬ &gt; ∧/↑ &gt; ∨/⊕/↓ &gt; →/← &gt; ↔；用括号消除歧义。→ 右结合，← 左结合；混用两种箭头必须加括号。“或者”允许两者同时成立；→ 表示实质蕴涵，不表示因果关系。前提互相矛盾时，经典逻辑下论证有效，但不代表结论真实。空前提的论证有效，当且仅当结论是重言式。量词公式使用经典一阶逻辑（非空论域，不含函数词与等词）；∀x 的辖域默认紧跟其后的公式，建议写 ∀x (P(x) → Q(x))。</p></div>
+    <div class="guide-note"><svg class="icon"><use href="#i-info"/></svg><p><strong>自然演绎规则</strong><br>证明使用前提、假设、∧I/∧E、∨I/∨E、→I/→E、↔I/↔E、¬I/¬E、RAA、⊥E，以及 ∀I/∀E、∃I/∃E。∀I 与 ∃E 会引入本征常项，并检查它不在开放假设或结论中自由出现。找到证明即有效；找到有限反例模型即无效；两者都未找到时显示“尚未判定”，不把搜索失败当作无效。</p></div>
+    <p class="guide-scope">适用范围：经典命题逻辑与一阶量词逻辑（非空论域，不含函数词、等词或模态词）。命题公式最多 10 个变量、8 条前提；量词公式使用有界自然演绎证明搜索和有限反例模型搜索，不是完整的一阶判定过程。自然语言翻译按公式结构转换，不是对现实事实的判断。小模型只解释命题无效论证的反例，可能措辞不准；以真值表、证明和反例模型为准。公式与含义不上传，权重从 Hugging Face 按需下载。</p>
     <button class="button button-primary guide-done" type="button" data-close-dialog>明白了，开始推理<svg class="icon"><use href="#i-arrow"/></svg></button>
   </dialog>
 
