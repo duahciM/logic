@@ -8,9 +8,9 @@ export const DEFAULT_MEANINGS = Object.freeze({
   A: '开关开启', B: '指示灯亮起', C: '门已锁好', D: '警报响起',
 });
 
-const PRECEDENCE = Object.freeze({ iff: 0, implies: 1, or: 2, and: 3, not: 4, variable: 5, constant: 5 });
-const BINARY = { '↔': 'iff', '→': 'implies', '∨': 'or', '∧': 'and' };
-const DISPLAY_OP = { iff: '↔', implies: '→', or: '∨', and: '∧' };
+const PRECEDENCE = Object.freeze({ iff: 0, implies: 1, reverse: 1, or: 2, xor: 2, nor: 2, and: 3, nand: 3, not: 4, variable: 5, constant: 5 });
+const BINARY = { '↔': 'iff', '→': 'implies', '←': 'reverse', '∨': 'or', '⊕': 'xor', '↓': 'nor', '∧': 'and', '↑': 'nand' };
+const DISPLAY_OP = { iff: '↔', implies: '→', reverse: '←', or: '∨', xor: '⊕', nor: '↓', and: '∧', nand: '↑' };
 
 export class LogicError extends Error {
   constructor(message, position = null) {
@@ -31,7 +31,10 @@ function tokenize(source) {
     const start = i;
     let type, value;
     const aliases = [
-      ['<=>', 'op', '↔'], ['<->', 'op', '↔'], ['->', 'op', '→'], ['=>', 'op', '→'],
+      ['<=>', 'op', '↔'], ['<->', 'op', '↔'], ['<-', 'op', '←'], ['->', 'op', '→'], ['=>', 'op', '→'],
+      ['⊕', 'op', '⊕'], ['⊻', 'op', '⊕'], ['≢', 'op', '⊕'], ['^', 'op', '⊕'],
+      ['↑', 'op', '↑'], ['⊼', 'op', '↑'], ['↓', 'op', '↓'], ['⊽', 'op', '↓'],
+      ['←', 'op', '←'], ['⊃', 'op', '→'], ['≡', 'op', '↔'],
       ['&&', 'op', '∧'], ['||', 'op', '∨'], ['==', 'op', '↔'],
       ['↔', 'op', '↔'], ['→', 'op', '→'], ['∨', 'op', '∨'], ['∧', 'op', '∧'],
       ['¬', 'op', '¬'], ['!', 'op', '¬'], ['~', 'op', '¬'],
@@ -53,7 +56,7 @@ function tokenize(source) {
   return tokens;
 }
 
-/** Parse with precedence ¬ > ∧ > ∨ > → > ↔. Implication is right-associative. */
+/** Parse with precedence ¬ > ∧/↑ > ∨/⊕/↓ > →/← > ↔. Use parentheses for mixed arrows. */
 export function parse(source) {
   const tokens = tokenize(source);
   let cursor = 0;
@@ -92,9 +95,30 @@ export function parse(source) {
     }
     return node;
   }
-  const and = (depth) => binary(depth, '∧', unary);
-  const or = (depth) => binary(depth, '∨', and);
-  const implies = (depth) => binary(depth, '→', or);
+  const and = (depth) => {
+    let node = unary(depth);
+    while (isOp('∧') || isOp('↑')) { const op = take().value; node = { type: BINARY[op], left: node, right: unary(depth) }; }
+    return node;
+  };
+  const or = (depth) => {
+    let node = and(depth);
+    while (isOp('∨') || isOp('⊕') || isOp('↓')) { const op = take().value; node = { type: BINARY[op], left: node, right: and(depth) }; }
+    return node;
+  };
+  const implies = (depth) => {
+    let node = or(depth);
+    const chain = [];
+    while (isOp('→') || isOp('←')) { const op = take().value; chain.push({ op, node: or(depth) }); }
+    if (!chain.length) return node;
+    if (chain.some(item => item.op !== chain[0].op)) throw new LogicError('混用 → 与 ← 时请加括号，明确结合方向。', peek().position);
+    if (chain[0].op === '←') {
+      for (const item of chain) node = { type: 'reverse', left: node, right: item.node };
+      return node;
+    }
+    let right = chain[chain.length - 1].node;
+    for (let i = chain.length - 1; i >= 0; i--) right = { type: 'implies', left: i === 0 ? node : chain[i - 1].node, right };
+    return right;
+  };
   const expression = (depth) => binary(depth, '↔', implies);
   if (peek().type === 'end') throw new LogicError('请先填写逻辑公式。', 0);
   const ast = expression(0);
@@ -123,9 +147,9 @@ export function format(node, parentPrecedence = -1) {
   else if (node.type === 'constant') text = node.value ? '⊤' : '⊥';
   else if (node.type === 'not') text = `¬${format(node.child, precedence)}`;
   else {
-    const isNestedImplication = (child) => child.type === 'implies' || child.type === 'iff';
-    const childPrecedence = precedence + (node.type === 'implies' || (node.type === 'iff' && (isNestedImplication(node.left) || isNestedImplication(node.right))) ? 1 : 0);
-    text = `${format(node.left, childPrecedence)} ${DISPLAY_OP[node.type]} ${format(node.right, childPrecedence)}`;
+    const strict = ['implies', 'reverse', 'iff', 'xor', 'nand', 'nor'].includes(node.type);
+    const minimum = child => precedence + (strict || (child.type !== node.type && PRECEDENCE[child.type] === precedence) ? 1 : 0);
+    text = `${format(node.left, minimum(node.left))} ${DISPLAY_OP[node.type]} ${format(node.right, minimum(node.right))}`;
   }
   return precedence < parentPrecedence ? `(${text})` : text;
 }
@@ -141,6 +165,10 @@ export function evaluate(node, assignment) {
     case 'or': return evaluate(node.left, assignment) || evaluate(node.right, assignment);
     case 'implies': return !evaluate(node.left, assignment) || evaluate(node.right, assignment);
     case 'iff': return evaluate(node.left, assignment) === evaluate(node.right, assignment);
+    case 'reverse': return !evaluate(node.right, assignment) || evaluate(node.left, assignment);
+    case 'xor': return evaluate(node.left, assignment) !== evaluate(node.right, assignment);
+    case 'nand': return !(evaluate(node.left, assignment) && evaluate(node.right, assignment));
+    case 'nor': return !(evaluate(node.left, assignment) || evaluate(node.right, assignment));
     default: throw new LogicError('未知的公式节点。');
   }
 }
@@ -158,11 +186,16 @@ export function translate(node, meanings = {}, parentPrecedence = -1) {
     text = node.child.type === 'variable' || node.child.type === 'constant'
       ? `并非${child}` : `并非（${child}）`;
   } else {
-    const childPrecedence = precedence + (node.type === 'implies' || node.type === 'iff' ? 1 : 0);
-    const left = translate(node.left, meanings, childPrecedence);
-    const right = translate(node.right, meanings, childPrecedence);
+    const strict = ['implies', 'reverse', 'iff', 'xor', 'nand', 'nor'].includes(node.type);
+    const childPrecedence = precedence + (strict ? 1 : 0);
+    const left = translate(node.left, meanings, node.type === 'nand' ? 3 : node.type === 'nor' ? 2 : childPrecedence);
+    const right = translate(node.right, meanings, node.type === 'nand' ? 4 : node.type === 'nor' ? 3 : childPrecedence);
     if (node.type === 'implies') text = `如果${left}，那么${right}`;
+    else if (node.type === 'reverse') text = `如果${right}，那么${left}`;
     else if (node.type === 'iff') text = `${left}，当且仅当${right}`;
+    else if (node.type === 'xor') text = `要么${left}，要么${right}（二者不同时成立）`;
+    else if (node.type === 'nand') text = `并非（${left}，并且${right}）`;
+    else if (node.type === 'nor') text = `并非（${left}，或者${right}）`;
     else text = `${left}，${node.type === 'and' ? '并且' : '或者'}${right}`;
   }
   return precedence < parentPrecedence ? `（${text}）` : text;

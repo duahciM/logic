@@ -1,4 +1,6 @@
 import { analyze, parse, translate, DEFAULT_MEANINGS, LIMITS } from './logic.js';
+import { describeCounterexample, explanationKey } from './explanation.js';
+import { LocalExplainer } from './llm-client.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -16,6 +18,10 @@ const EXAMPLES = {
   explosion: { name: '矛盾前提', premises: ['P', '¬P'], conclusion: 'Q' },
   ac: { name: '肯定后件谬误', premises: ['P → Q', 'Q'], conclusion: 'P' },
   da: { name: '否定前件谬误', premises: ['P → Q', '¬P'], conclusion: '¬Q' },
+  xor: { name: '异或选言', premises: ['P ⊕ Q', 'P'], conclusion: '¬Q' },
+  nand: { name: '与非德摩根律', premises: ['P ↑ Q'], conclusion: '¬P ∨ ¬Q' },
+  'xor-fallacy': { name: '把相容析取当异或', premises: ['P ∨ Q', 'P'], conclusion: '¬Q' },
+  'nand-fallacy': { name: '误用与非', premises: ['P ↑ Q'], conclusion: '¬P ∧ ¬Q' },
 };
 
 let nextId = 1;
@@ -59,6 +65,10 @@ const histories = new Map();
 const selections = new Map();
 const snapshots = new Map();
 let lastDeleted = null;
+let modelConsent = false;
+let currentExplanationKey = '';
+let modelText = '';
+const explainer = new LocalExplainer(handleModelEvent);
 
 function fields() { return [...state.premises, state.conclusion]; }
 function getField(id = activeId) { return fields().find(field => field.id === id); }
@@ -201,7 +211,7 @@ function insertSymbol(symbol) {
   if (symbol === '()') {
     inserted = `(${selected})`;
     caret = start + 1 + selected.length + (selected ? 1 : 0);
-  } else if (['∧', '∨', '→', '↔'].includes(symbol)) {
+  } else if (['∧', '∨', '→', '↔', '⊕', '↑', '↓', '←'].includes(symbol)) {
     const prefix = left && !/\s$/.test(left) ? ' ' : '';
     const suffix = !right || !/^\s/.test(right) ? ' ' : '';
     inserted = `${prefix}${symbol}${suffix}`;
@@ -266,7 +276,7 @@ function validate(showToast = false) {
     $('input', wrapper).setAttribute('aria-invalid', message ? 'true' : 'false');
     $('.field-error', wrapper).textContent = message || '';
   }
-  renderResult(); renderTable();
+  renderResult(); renderTranslation(); renderTable();
   if (errors.size) {
     const id = errors.keys().next().value;
     focusField(id);
@@ -308,28 +318,84 @@ function renderResult() {
 }
 
 function currentMeanings() { return state.useMeanings ? state.meanings : {}; }
-function translatedLines() {
-  const lines = [];
-  for (const [index, field] of state.premises.entries()) {
-    try { lines.push(`前提 ${index + 1}：${translate(parse(field.value).ast, currentMeanings())}。`); } catch { /* Incomplete formulas are not translated. */ }
-  }
-  try { lines.push(`所以，${translate(parse(state.conclusion.value).ast, currentMeanings())}。`); } catch { /* Keep the copy action disabled until complete. */ }
-  return lines;
+function resetModelUI() {
+  modelText = '';
+  $('#model-output').hidden = true;
+  $('#model-output p').textContent = '';
+  $('#model-progress').hidden = true;
+  $('#cancel-model').hidden = true;
+  $('#cancel-model').textContent = '停止 / 卸载';
+  $('#enable-model').hidden = false;
+  $('#enable-model span').textContent = '下载并启用小模型';
+  $('#model-status').textContent = '未加载模型。仅在点击启用后下载权重，随后在本机推理。';
 }
 function renderTranslation() {
-  const row = (field, index, conclusion = false) => {
-    let text;
-    try { text = escapeHTML(translate(parse(field.value).ast, currentMeanings())) + '。'; }
-    catch { text = `<span class="incomplete">${field.value.trim() ? '补全公式后生成翻译' : '等待输入公式…'}</span>`; }
-    return `<div class="translation-row ${conclusion ? 'conclusion-translation' : ''}"><span class="translation-index">${conclusion ? '∴' : index + 1}</span><p>${text}</p></div>`;
-  };
-  $('#translation-content').innerHTML = state.premises.map((field, index) => row(field, index)).join('') + row(state.conclusion, -1, true);
-  $('#copy-translation').disabled = translatedLines().length !== fields().length;
-  const used = usedVariables();
-  $('#meaning-summary').textContent = state.useMeanings
-    ? used.slice(0, 2).map(name => `${name}：${state.meanings[name] || name}`).join(' · ') || '给变量赋予你的命题含义'
-    : '保留变量，不替换命题含义';
-  $('#meaning-summary').title = used.map(name => `${name} = ${state.meanings[name] || name}`).join('\n');
+  const invalid = result?.valid === false;
+  $('#translation-card').hidden = !invalid;
+  if (!invalid) {
+    currentExplanationKey = '';
+    explainer.cancel();
+    $('#translation-content').replaceChildren();
+    $('#copy-translation').disabled = true;
+    resetModelUI();
+    return;
+  }
+  const key = explanationKey(result, currentMeanings());
+  const description = describeCounterexample(result, currentMeanings());
+  if (key !== currentExplanationKey) {
+    explainer.cancel();
+    currentExplanationKey = key;
+    resetModelUI();
+    $('#translation-content').textContent = description.narrative;
+    if (modelConsent) startModel();
+  }
+  $('#copy-translation').disabled = false;
+}
+function startModel() {
+  if (result?.valid !== false) return;
+  resetModelUI();
+  $('#enable-model').hidden = true;
+  $('#cancel-model').hidden = false;
+  explainer.generate(describeCounterexample(result, currentMeanings()), currentExplanationKey);
+}
+function handleModelEvent(event) {
+  if (event.key !== currentExplanationKey || result?.valid !== false) return;
+  const status = $('#model-status');
+  if (event.type === 'progress') {
+    $('#model-progress').hidden = false;
+    const bar = $('#model-progress progress');
+    if (event.total) { bar.value = event.loaded / event.total; } else bar.removeAttribute('value');
+    const mb = n => (n / 1024 / 1024).toFixed(1);
+    $('#model-progress span').textContent = event.total ? `${mb(event.loaded)} / ${mb(event.total)} MiB` : `${mb(event.loaded)} MiB`;
+    status.textContent = '按需下载模型文件；公式仍留在本机。';
+  } else if (event.type === 'status') {
+    status.textContent = ({ starting: '正在启动本地推理线程…', runtime: '正在准备推理运行时…', initializing: '正在将模型载入本机内存…', generating: '正在改写已验证的反例，不重新判断有效性…', fallback: 'WebGPU 初始化失败，尝试 CPU 兼容模式（需要额外下载兼容权重）…' })[event.stage] || '正在准备…';
+  } else if (event.type === 'token') {
+    modelText += event.text;
+    $('#model-output').hidden = false;
+    $('#model-output p').textContent = modelText;
+  } else if (event.type === 'done') {
+    $('#model-progress').hidden = true;
+    modelText = event.text.trim();
+    if (!modelText || modelText.length > 1200 || !/[\u4e00-\u9fff]/.test(modelText)) {
+      status.textContent = '模型未给出可用改写，已保留上方准确的反例直译。可以重试。';
+      $('#model-output').hidden = true;
+    } else {
+      $('#model-output p').textContent = modelText;
+      status.textContent = `改写完成（${event.device || '本机'}）。请以上方反例为准。`;
+      $('#enable-model span').textContent = '重新生成改写';
+      $('#enable-model').hidden = false;
+      $('#cancel-model').hidden = false;
+      $('#cancel-model').textContent = '卸载模型';
+    }
+  } else if (event.type === 'error') {
+    status.textContent = `模型暂不可用：${event.message} 上方反例直译仍然有效。`;
+    $('#model-output').hidden = true;
+    $('#enable-model').hidden = false;
+    $('#enable-model span').textContent = '重试本地模型';
+    $('#cancel-model').hidden = true;
+    explainer.cancel();
+  }
 }
 function usedVariables() {
   return [...new Set(fields().flatMap(field => field.value.match(/[A-Za-z]/g) || []).map(name => name.toUpperCase()))].sort();
@@ -459,7 +525,8 @@ $('#new-argument').addEventListener('click', () => {
   toast('新的思考，从这里开始。命题含义已为你保留。');
 });
 $('#copy-translation').addEventListener('click', async () => {
-  const text = translatedLines().join('\n');
+  if (result?.valid !== false) return;
+  const text = $('#translation-content').textContent + (modelText ? `\n\n模型辅助改写（请核对）：\n${modelText}` : '');
   try {
     if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
     else {
@@ -476,6 +543,25 @@ $('#prev-page').addEventListener('click', () => { page--; renderTable(); $('#tru
 $('#next-page').addEventListener('click', () => { page++; renderTable(); $('#truth-table-container').scrollTop = 0; });
 $('#export-table').addEventListener('click', exportCSV);
 $('#edit-meanings').addEventListener('click', openMeanings);
+$('#enable-model').addEventListener('click', () => {
+  if (result?.valid !== false) return;
+  if (modelConsent) startModel(); else $('#model-dialog').showModal();
+});
+$('#confirm-model').addEventListener('click', () => {
+  if (result?.valid !== false) { $('#model-dialog').close(); return; }
+  modelConsent = true; $('#model-dialog').close(); startModel();
+});
+$('#cancel-model').addEventListener('click', () => {
+  explainer.cancel(); modelConsent = false; resetModelUI();
+  $('#model-status').textContent = '已停止并卸载内存中的模型。已下载的缓存仍保留，下次需重新点击启用。';
+});
+$('#clear-model-cache').addEventListener('click', async () => {
+  modelConsent = false;
+  $('#clear-model-cache').disabled = true;
+  try { const removed = await explainer.clearCache(); resetModelUI(); toast(removed ? '模型缓存已清除，下次启用时才会重新下载。' : '当前没有可清除的模型缓存。'); }
+  catch { toast('浏览器未允许清理缓存，请在站点设置中清除。'); }
+  finally { $('#clear-model-cache').disabled = false; }
+});
 $('#reset-meanings').addEventListener('click', () => {
   for (const input of $$('#meaning-fields input')) input.value = DEFAULT_MEANINGS[input.name] || '';
   $('#use-meanings').checked = true;
