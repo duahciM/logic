@@ -1,0 +1,14 @@
+{
+  "name": "logic-lab",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A Chinese-language classical propositional logic workbench.",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs",
+    "test": "node --test tests/*.test.js",
+    "check": "node --check app.js && node --check logic.js && node --check server.mjs"
+  },
+  "engines": { "node": ">=20" }
+}

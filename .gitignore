@@ -1,0 +1,6 @@
+node_modules/
+.cache/
+.playwright/
+.test-artifacts/
+*.log
+.DS_Store
