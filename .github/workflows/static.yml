@@ -41,7 +41,7 @@ jobs:
           npm ci --ignore-scripts
           npm run build
           mkdir _site
-          cp index.html styles.css app.js logic.js explanation.js llm-client.js favicon.svg _site/
+          cp index.html styles.css app.js logic.js fol.js natural-deduction.js countermodel.js argument.js explanation.js llm-client.js favicon.svg _site/
           cp -r vendor _site/vendor
       - name: Setup Pages
         uses: actions/configure-pages@v5

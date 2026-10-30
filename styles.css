@@ -8,7 +8,7 @@
   --purple: #7862cf;
   --purple-dark: #6550bb;
   --purple-pale: #f2eefc;
-  --green: #328c70;
+  --green: #276e55;
   --green-pale: #eff8f3;
   --red: #ad4652;
   --red-pale: #fdf1f2;
@@ -98,7 +98,7 @@ h2 { font-size: 14px; font-weight: 650; display: flex; align-items: center; gap:
 .operator-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .operator-grid button { display: flex; align-items: center; text-align: left; gap: 8px; padding: 10px 8px; border: 1px solid #e8e8f0; border-radius: 6px; background: #fff; transition: .15s; min-height: 56px; }
 .operator-grid button:hover { background: #faf8ff; border-color: #c6b8e6; }
-.operator-symbol { font-family: 'Cambria Math', Georgia, serif; font-size: 24px; line-height: 1; color: #655b7d; min-width: 22px; text-align: center; }
+.operator-symbol { font-family: 'Cambria Math', 'Noto Sans Math', Georgia, serif; font-size: 24px; line-height: 1; color: #655b7d; min-width: 22px; text-align: center; }
 .operator-grid button > span:last-child { font-size: 10px; color: #666377; white-space: nowrap; }
 .operator-grid small { display: block; font-size: 8px; color: #716979; margin-top: 3px; }
 .operator-grid button:nth-child(4) small { font-size: 7px; letter-spacing: -.3px; }
@@ -145,7 +145,7 @@ h2 { font-size: 14px; font-weight: 650; display: flex; align-items: center; gap:
 .delete-premise:hover:not(:disabled) { color: var(--red); background: var(--red-pale); }
 .field-top .icon-button { width: 21px; height: 21px; padding: 3px; }
 .field-top .icon-button .icon { width: 13px; height: 13px; }
-.formula-input { width: 100%; display: block; padding: 9px 1px 3px; border: 0; background: transparent; font-size: 24px; line-height: 1.5; font-family: 'Cambria Math', 'STIX Two Math', Georgia, 'Times New Roman', serif; letter-spacing: 1.2px; color: #484054; caret-color: var(--purple); border-radius: 0; }
+.formula-input { width: 100%; display: block; padding: 9px 1px 3px; border: 0; background: transparent; font-size: 24px; line-height: 1.5; font-family: 'Cambria Math', 'STIX Two Math', 'Noto Sans Math', Georgia, 'Times New Roman', serif; letter-spacing: 1.2px; color: #484054; caret-color: var(--purple); border-radius: 0; }
 .formula-input:focus-visible { outline: none; }
 .formula-input::placeholder { color: #706a7a; font-family: inherit; font-size: 17px; letter-spacing: .4px; }
 .field-error { font-size: 10px; color: var(--red); margin-top: 6px; line-height: 1.65; }
@@ -240,7 +240,7 @@ kbd { font-family: inherit; font-size: 8px; padding: 1px 3px; border: 1px solid 
 .truth-table th.formula-column { min-width: 116px; }
 .truth-table th.conclusion-column { background: #f4effb; color: #7c609c; }
 .table-column-label { font-size: 9px; display: block; margin-bottom: 4px; color: #73687f; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-style: normal; }
-.table-formula { font-family: 'Cambria Math', Georgia, serif; font-size: 13px; letter-spacing: .5px; display: block; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+.table-formula { font-family: 'Cambria Math', 'Noto Sans Math', Georgia, serif; font-size: 13px; letter-spacing: .5px; display: block; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 .truth-table td { padding: 10px 15px; border-bottom: 1px solid #f0edf5; color: #70697b; font-variant-numeric: tabular-nums; }
 .truth-table tbody tr:last-child td { border-bottom: 0; }
 .truth-table tbody tr:hover td { background: #f9f7fd; }
@@ -536,3 +536,60 @@ kbd { font-family: inherit; font-size: 8px; padding: 1px 3px; border: 1px solid 
 @media (max-width: 580px) { .extended-label { display: none; } .extended-operators { margin-top: 7px; grid-template-columns: repeat(4, minmax(0,1fr)); } .extended-operators button { min-height: 49px; padding: 6px 2px; } .extended-operators .operator-symbol { font-size: 19px; } .extended-operators button > span:last-child { font-size: 7px; } .operator-section { grid-row: 4 / 6; } .model-bottom { font-size: 9px; } }
 
 .modal-description a { color: #7153a4; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Quantifiers, natural deduction, and finite countermodels. */
+.term-grid { margin-top: 2px; }
+.term-grid button { font-size: 16px; }
+.quantifier-operators .operator-symbol { font-size: 18px; letter-spacing: -.5px; }
+.proof-card { grid-column: 2 / 4; grid-row: 2; padding: 22px 23px 18px; }
+.workspace-grid.has-proof .truth-card { grid-row: 3; }
+.proof-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.proof-heading h2 { flex-wrap: wrap; }
+.proof-content { margin-top: 16px; }
+.proof-lines { list-style: none; margin: 0; padding: 0; border: 1px solid #ece7f5; border-radius: 8px; overflow: hidden; }
+.proof-line { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 4px 10px; align-items: baseline; padding: 9px 12px; border-bottom: 1px solid #f1edf8; background: #fff; margin-left: calc(var(--depth, 0) * 18px); border-left: 2px solid transparent; }
+.proof-line:last-child { border-bottom: 0; }
+.proof-line[style*="--depth:0"] { margin-left: 0; }
+.proof-line:not([style*="--depth:0"]) { border-left-color: #d9ccf2; background: #fcfaff; }
+.proof-line.assumption { background: #f6f1fd; }
+.proof-line-number { font-size: 10px; color: #71618a; font-variant-numeric: tabular-nums; }
+.proof-formula { font-family: 'Cambria Math', 'Noto Sans Math', Georgia, serif; font-size: 14px; color: #4f4463; overflow-wrap: anywhere; }
+.proof-rule { font-size: 10px; color: #71608c; white-space: nowrap; }
+.proof-refs { margin-left: 6px; color: #6f5f88; font-variant-numeric: tabular-nums; }
+.proof-note { grid-column: 2 / -1; font-size: 9px; color: #6f5c86; line-height: 1.7; }
+.proof-footer { margin-top: 12px; font-size: 10px; color: #776b84; line-height: 1.9; }
+.countermodel { display: grid; gap: 14px; }
+.model-block h3 { font-size: 11px; color: #6d5a88; margin-bottom: 8px; }
+.model-block p { font-size: 12px; color: #655b73; line-height: 1.9; }
+.model-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.model-list li { font-size: 12px; color: #655b73; line-height: 1.8; overflow-wrap: anywhere; }
+.formula-values li { display: flex; justify-content: space-between; gap: 12px; align-items: center; border-bottom: 1px dashed #eee7f5; padding-bottom: 6px; }
+.formula-values code { font-family: 'Cambria Math', 'Noto Sans Math', Georgia, serif; font-size: 13px; }
+.model-truth { font-size: 10px; border-radius: 4px; padding: 2px 7px; white-space: nowrap; }
+.model-truth.true { background: #e7f3eb; color: #3f7457; }
+.model-truth.false { background: #f7dfe5; color: #99455a; }
+.result-card.unknown .result-banner { background: #f5f3fb; border-color: #e7e1f4; color: #6f5b92; }
+.result-card.unknown .result-status-tag { color: #6f5b92; background: #f5f3fb; }
+.result-card.unknown .result-emblem { background: #e7e1f4; }
+.result-card.unknown .result-banner p { color: #6f5b92; }
+@media (max-width: 1060px) {
+  .proof-card { grid-column: 2; grid-row: 3; }
+  .workspace-grid.has-proof .truth-card { grid-row: 4; }
+}
+@media (max-width: 760px) {
+  .proof-card { padding: 19px 16px 16px; }
+  .proof-line { grid-template-columns: 24px minmax(0, 1fr); }
+  .proof-rule { grid-column: 2; white-space: normal; }
+  .proof-note { grid-column: 2; }
+}
+@media (max-width: 580px) {
+  .proof-card { order: 3; }
+  .truth-card { order: 4; }
+  .quantifier-operators { margin-top: 7px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .quantifier-operators button { min-height: 52px; padding: 7px 2px; }
+  .quantifier-operators .operator-symbol { font-size: 15px; }
+  .quantifier-operators button > span:last-child { font-size: 7px; }
+  .operator-section { grid-row: 4 / 7; }
+  .proof-heading { flex-direction: column; }
+  .proof-line { margin-left: calc(var(--depth, 0) * 10px); padding: 8px; }
+}

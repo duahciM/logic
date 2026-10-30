@@ -1,5 +1,8 @@
-import { analyze, parse, translate, DEFAULT_MEANINGS, LIMITS } from './logic.js';
-import { describeCounterexample, explanationKey } from './explanation.js';
+import { DEFAULT_MEANINGS, LIMITS } from './logic.js';
+import { analyzeArgument, parseFormula } from './argument.js';
+import { proofToText } from './natural-deduction.js';
+import { describeModel } from './countermodel.js';
+import { describeCounterexample, describeFirstOrderCountermodel, explanationKey } from './explanation.js';
 import { LocalExplainer } from './llm-client.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -22,6 +25,15 @@ const EXAMPLES = {
   nand: { name: '与非德摩根律', premises: ['P ↑ Q'], conclusion: '¬P ∨ ¬Q' },
   'xor-fallacy': { name: '把相容析取当异或', premises: ['P ∨ Q', 'P'], conclusion: '¬Q' },
   'nand-fallacy': { name: '误用与非', premises: ['P ↑ Q'], conclusion: '¬P ∧ ¬Q' },
+  'fol-mp': { name: '全称三段论', premises: ['∀x (P(x) → Q(x))', '∀x P(x)'], conclusion: '∀x Q(x)' },
+  'fol-exists': { name: '全称到存在', premises: ['∀x P(x)'], conclusion: '∃x P(x)' },
+  'fol-exists-and': { name: '存在合取', premises: ['∃x (P(x) ∧ Q(x))'], conclusion: '∃x P(x)' },
+  'fol-syllogism': { name: '存在三段论', premises: ['∀x (P(x) → Q(x))', '∃x P(x)'], conclusion: '∃x Q(x)' },
+  'fol-not-exists': { name: '量词否定', premises: ['¬∃x P(x)'], conclusion: '∀x ¬P(x)' },
+  'fol-order': { name: '量词交换', premises: ['∃x ∀y R(x, y)'], conclusion: '∀y ∃x R(x, y)' },
+  'fol-invalid-exists': { name: '存在不能推全称', premises: ['∃x P(x)'], conclusion: '∀x P(x)' },
+  'fol-invalid-order': { name: '全称存在不能交换', premises: ['∀x ∃y R(x, y)'], conclusion: '∃y ∀x R(x, y)' },
+  'fol-invalid-converse': { name: '肯定后件谓词版', premises: ['∀x (P(x) → Q(x))', '∃x Q(x)'], conclusion: '∃x P(x)' },
 };
 
 let nextId = 1;
@@ -252,21 +264,21 @@ function markEdited() {
     input.removeAttribute('aria-invalid');
     $('.field-error', wrapper).textContent = '';
   }
-  renderResult(); renderTranslation(); renderTable(); updateActiveUI(); queueSave();
+  renderResult(); renderTranslation(); renderProof(); renderTable(); updateActiveUI(); queueSave();
 }
 
 function validate(showToast = false) {
   errors.clear();
   for (const field of fields()) {
-    try { parse(field.value); }
+    try { parseFormula(field.value); }
     catch (error) { errors.set(field.id, error.message); }
   }
   result = null;
   if (!errors.size) {
     try {
-      result = analyze({ premises: state.premises.map(field => field.value), conclusion: state.conclusion.value });
+      result = analyzeArgument({ premises: state.premises.map(field => field.value), conclusion: state.conclusion.value });
       filter = 'all'; page = 0;
-      if (showToast) toast(result.valid ? '验证完成：这是一个有效论证。' : `验证完成：找到 ${result.counterexamples.length} 个反例。`);
+      if (showToast) toast(result.valid === true ? (result.kind === 'first-order' ? '验证完成：已构造自然演绎证明。' : '验证完成：这是一个有效论证。') : result.valid === false ? (result.kind === 'first-order' ? '验证完成：找到有限反例模型。' : `验证完成：找到 ${result.counterexamples.length} 个反例。`) : '尚未判定：证明搜索和有限模型搜索都未给出结论。');
     } catch (error) { errors.set('global', error.message); }
   }
   for (const field of fields()) {
@@ -276,7 +288,7 @@ function validate(showToast = false) {
     $('input', wrapper).setAttribute('aria-invalid', message ? 'true' : 'false');
     $('.field-error', wrapper).textContent = message || '';
   }
-  renderResult(); renderTranslation(); renderTable();
+  renderResult(); renderTranslation(); renderProof(); renderTable();
   if (errors.size) {
     const id = errors.keys().next().value;
     focusField(id);
@@ -297,7 +309,8 @@ function renderResult() {
     else placeholderResult('你的推理，经得起检验吗？', '填写前提与结论，点击“验证论证”，看看结论是否必然成立。');
     return;
   }
-  const { valid, variables, rows, counterexamples, criticalRows, contradictoryPremises, tautologicalConclusion } = result;
+  if (result.kind === 'first-order') { renderFirstOrderResult(); return; }
+  const { valid, variables, rows, counterexamples, contradictoryPremises, tautologicalConclusion } = result;
   $('#result-card').className = `card result-card ${valid ? 'valid' : 'invalid'}`;
   $('#result-status-tag').textContent = '已验证';
   let explanation = valid
@@ -309,12 +322,36 @@ function renderResult() {
   } else if (!state.premises.length) {
     extra = `<div class="result-note">没有前提时，只有重言式才能作为有效结论。当前结论${tautologicalConclusion ? '在所有赋值下都为真' : '并非在所有赋值下都为真'}。</div>`;
   }
+  if (valid && result.proofSteps?.length) extra += '<div class="result-note">已构造自然演绎证明，每一步的规则与依赖见下方证明过程。</div>';
   if (!valid) {
     const first = counterexamples[0];
     extra = `<div class="counterexample-detail"><strong>看看这个反例</strong><div class="assignment-chips">${variables.map(name => `<span class="assignment-chip">${name} = ${first.values[name] ? '真' : '假'}</span>`).join('')}</div><p>此时，全部前提为真，结论为假。</p><button class="counterexample-link" type="button" id="show-counterexamples">在真值表中查看 ${icon('arrow')}</button></div>`;
   }
   $('#result-content').innerHTML = `<div><div class="result-banner"><span class="result-emblem">${icon(valid ? 'check' : 'x')}</span><div><h3>${valid ? '论证有效' : '论证无效'}</h3><p>${valid ? 'VALID ARGUMENT' : 'INVALID ARGUMENT'}</p></div></div><p class="result-explanation">${explanation}</p><div class="result-metrics"><div class="result-metric"><strong>${variables.length}</strong><span>命题变量</span></div><div class="result-metric"><strong>${rows.length}</strong><span>真假组合</span></div><div class="result-metric"><strong>${counterexamples.length}</strong><span>发现反例</span></div></div>${extra}</div>`;
   $('#show-counterexamples')?.addEventListener('click', () => { setFilter('counterexample'); $('.truth-card').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+}
+function renderFirstOrderResult() {
+  const { valid, proofSteps, proofStats, countermodel, countermodelSearch } = result;
+  const type = valid === true ? 'valid' : valid === false ? 'invalid' : 'unknown';
+  $('#result-card').className = `card result-card ${type}`;
+  $('#result-status-tag').textContent = valid === null ? '有界搜索' : '已验证';
+  const title = valid === true ? '论证有效' : valid === false ? '论证无效' : '尚未判定';
+  const english = valid === true ? 'PROOF FOUND' : valid === false ? 'COUNTERMODEL FOUND' : 'NOT DECIDED';
+  const explanation = valid === true
+    ? `已构造并通过校验的<strong>自然演绎证明</strong>，共 ${proofSteps.length} 步。证明只使用语法规则，不依赖真值表枚举。`
+    : valid === false
+      ? `找到一个<strong>有限反例模型</strong>（论域大小 ${countermodel.domain.length}）：所有前提为真，结论为假。只要存在一个模型反例，论证就无效。`
+      : `有界自然演绎证明搜索未找到证明，有限反例模型搜索（论域至多 ${countermodelSearch?.maxDomain ?? 3}）也未找到反例。一阶逻辑不可判定，这<strong>不等于</strong>论证有效或无效。`;
+  const metrics = valid === true
+    ? `<div class="result-metric"><strong>${proofSteps.length}</strong><span>证明步骤</span></div><div class="result-metric"><strong>${result.premises.length}</strong><span>前提</span></div><div class="result-metric"><strong>${proofStats?.nodes ?? '—'}</strong><span>搜索节点</span></div>`
+    : valid === false
+      ? `<div class="result-metric"><strong>${countermodel.domain.length}</strong><span>论域大小</span></div><div class="result-metric"><strong>${result.premises.length}</strong><span>前提</span></div><div class="result-metric"><strong>1</strong><span>反例模型</span></div>`
+      : `<div class="result-metric"><strong>${proofStats?.nodes ?? 0}</strong><span>搜索节点</span></div><div class="result-metric"><strong>${countermodelSearch?.maxDomain ?? 3}</strong><span>最大论域</span></div><div class="result-metric"><strong>—</strong><span>结论</span></div>`;
+  const extra = valid === null
+    ? '<div class="result-note">可尝试简化公式、补充中间前提，或检查量词辖域。证明搜索失败不会被当作无效；只有显式反例模型才能推翻论证。</div>'
+    : `<div class="result-note">${valid === true ? '量词规则的本征常项条件已自动检查。' : '反例模型的谓词解释与真假评估见下方。'}</div><button class="counterexample-link" type="button" id="show-proof">${valid === true ? '查看自然演绎证明' : '查看反例模型'} ${icon('arrow')}</button>`;
+  $('#result-content').innerHTML = `<div><div class="result-banner"><span class="result-emblem">${icon(valid === true ? 'check' : valid === false ? 'x' : 'info')}</span><div><h3>${title}</h3><p>${english}</p></div></div><p class="result-explanation">${explanation}</p><div class="result-metrics">${metrics}</div>${extra}</div>`;
+  $('#show-proof')?.addEventListener('click', () => $('#proof-card').scrollIntoView({ behavior: 'smooth', block: 'start' }));
 }
 
 function currentMeanings() { return state.useMeanings ? state.meanings : {}; }
@@ -332,6 +369,8 @@ function resetModelUI() {
 function renderTranslation() {
   const invalid = result?.valid === false;
   $('#translation-card').hidden = !invalid;
+  const firstOrder = result?.kind === 'first-order';
+  $('#model-panel').hidden = firstOrder;
   if (!invalid) {
     currentExplanationKey = '';
     explainer.cancel();
@@ -341,25 +380,26 @@ function renderTranslation() {
     return;
   }
   const key = explanationKey(result, currentMeanings());
-  const description = describeCounterexample(result, currentMeanings());
+  const description = firstOrder ? describeFirstOrderCountermodel(result, currentMeanings()) : describeCounterexample(result, currentMeanings());
+  $('#invalid-only-label').innerHTML = `<span></span>${firstOrder ? '有限模型已找到反例' : '真值表已找到反例'}`;
   if (key !== currentExplanationKey) {
     explainer.cancel();
     currentExplanationKey = key;
     resetModelUI();
     $('#translation-content').textContent = description.narrative;
-    if (modelConsent) startModel();
+    if (modelConsent && !firstOrder) startModel();
   }
   $('#copy-translation').disabled = false;
 }
 function startModel() {
-  if (result?.valid !== false) return;
+  if (result?.valid !== false || result.kind === 'first-order') return;
   resetModelUI();
   $('#enable-model').hidden = true;
   $('#cancel-model').hidden = false;
   explainer.generate(describeCounterexample(result, currentMeanings()), currentExplanationKey);
 }
 function handleModelEvent(event) {
-  if (event.key !== currentExplanationKey || result?.valid !== false) return;
+  if (event.key !== currentExplanationKey || result?.valid !== false || result.kind === 'first-order') return;
   const status = $('#model-status');
   if (event.type === 'progress') {
     $('#model-progress').hidden = false;
@@ -398,7 +438,7 @@ function handleModelEvent(event) {
   }
 }
 function usedVariables() {
-  return [...new Set(fields().flatMap(field => field.value.match(/[A-Za-z]/g) || []).map(name => name.toUpperCase()))].sort();
+  return [...new Set(fields().flatMap(field => field.value.match(/[A-Z]/g) || []))].sort();
 }
 function setFilter(next) {
   filter = next; page = 0; renderTable();
@@ -408,7 +448,47 @@ function filteredRows() {
   const rows = filter === 'critical' ? result.criticalRows : filter === 'counterexample' ? result.counterexamples : result.rows;
   return rows;
 }
+function renderProof() {
+  const card = $('#proof-card');
+  const has = Boolean(result && (result.kind === 'first-order' || result.proofSteps?.length || result.valid === true));
+  card.hidden = !has;
+  $('.workspace-grid').classList.toggle('has-proof', has);
+  if (!has) { $('#proof-content').innerHTML = ''; $('#copy-proof').disabled = true; return; }
+  $('#copy-proof').disabled = !(result.proofSteps?.length || result.countermodel);
+  const tag = $('#proof-tag');
+  const description = $('#proof-description');
+  if (result.proofSteps?.length) {
+    tag.textContent = '已证明';
+    description.textContent = '每一步都标注规则与依赖行；量词规则附带本征常项条件。证明已通过独立规则校验。';
+    const lines = result.proofSteps.map(step => `<li class="proof-line depth-${Math.min(step.depth, 6)} ${step.rule === 'assumption' ? 'assumption' : ''}" style="--depth:${step.depth}"><span class="proof-line-number">${step.line}</span><span class="proof-formula">${escapeHTML(step.formatted)}</span><span class="proof-rule">${escapeHTML(step.ruleLabel)}${step.refs.length ? `<span class="proof-refs">[${step.refs.join(', ')}]</span>` : ''}</span>${step.note ? `<span class="proof-note">${escapeHTML(step.note)}</span>` : ''}</li>`).join('');
+    $('#proof-content').innerHTML = `<ol class="proof-lines" aria-label="自然演绎证明步骤">${lines}</ol><p class="proof-footer">最终行即为目标结论。缩进表示子证明：假设在子证明内引入，并在对应引入规则处解除。</p>`;
+    return;
+  }
+  if (result.countermodel) {
+    tag.textContent = '反例模型';
+    description.textContent = '这是一个有限模型反例：前提全部为真，结论为假。它足以推翻论证。';
+    const model = describeModel(result.countermodel);
+    const values = result.countermodelSearch?.premiseValues || [];
+    const premises = result.premises.map((premise, index) => `<li><code>${escapeHTML(premise.formatted)}</code><span class="model-truth ${values[index] === false ? 'false' : 'true'}">${values[index] === false ? '假' : '真'}</span></li>`).join('');
+    $('#proof-content').innerHTML = `<div class="countermodel"><div class="model-block"><h3>论域</h3><div class="assignment-chips">${result.countermodel.domain.map(value => `<span class="assignment-chip">d${value}</span>`).join('')}</div></div>${model.predicates.length ? `<div class="model-block"><h3>谓词解释</h3><ul class="model-list">${model.predicates.map(text => `<li>${escapeHTML(text)}</li>`).join('')}</ul></div>` : ''}${model.constants.length ? `<div class="model-block"><h3>常项</h3><p>${escapeHTML(model.constants.join('，'))}</p></div>` : ''}${model.assignment.length ? `<div class="model-block"><h3>自由变量赋值</h3><p>${escapeHTML(model.assignment.join('，'))}</p></div>` : ''}<div class="model-block"><h3>公式真假</h3><ul class="model-list formula-values">${premises}<li><code>${escapeHTML(result.conclusion.formatted)}</code><span class="model-truth false">假</span></li></ul></div></div>`;
+    return;
+  }
+  if (result.valid === true) {
+    tag.textContent = '真值表有效';
+    description.textContent = '命题逻辑已由真值表判定有效。';
+    $('#proof-content').innerHTML = '<div class="table-empty">当前有界自然演绎搜索未找到证明，但真值表已经给出确定性判定。可尝试简化公式后重新验证。</div>';
+    return;
+  }
+  tag.textContent = '尚未判定';
+  description.textContent = '一阶逻辑不可判定；有界搜索失败不等于无效。';
+  const searched = result.countermodelSearch?.searched?.map(item => `论域 ${item.size}${item.skipped ? '（跳过）' : ''}`).join('、') || '无';
+  $('#proof-content').innerHTML = `<div class="table-empty">${icon('info')}未找到自然演绎证明，也未找到有限反例模型。<br>证明搜索节点：${result.proofStats?.nodes ?? 0} / ${result.proofStats?.maxNodes ?? '—'}；已检查：${escapeHTML(searched)}。<br>请简化公式、补充中间前提，或检查量词辖域。</div>`;
+}
+
 function renderTable() {
+  const isFirstOrder = result?.kind === 'first-order';
+  $('.truth-card').hidden = isFirstOrder;
+  if (isFirstOrder) { $('#export-table').disabled = true; return; }
   const hasResult = Boolean(result);
   $('#export-table').disabled = !hasResult;
   $('#truth-count').textContent = hasResult ? `${result.rows.length} 种赋值` : '等待验证';
@@ -444,7 +524,7 @@ function renderTable() {
   $('#next-page').disabled = page >= pages - 1;
 }
 function exportCSV() {
-  if (!result) return;
+  if (!result || result.kind === 'first-order') return;
   const quote = value => `"${String(value).replace(/"/g, '""')}"`;
   const header = ['赋值', ...result.variables, ...result.premises.map((premise, index) => `前提${index + 1}: ${premise.formatted}`), `结论: ${result.conclusion.formatted}`, '检验'];
   const lines = [header, ...result.rows.map((row, index) => [index + 1, ...result.variables.map(name => row.values[name] ? 'T' : 'F'), ...row.premiseValues.map(value => value ? 'T' : 'F'), row.conclusionValue ? 'T' : 'F', row.counterexample ? '反例' : row.allPremisesTrue ? '成立' : '—'])];
@@ -538,6 +618,20 @@ $('#copy-translation').addEventListener('click', async () => {
     toast('自然语言翻译已复制。');
   } catch { toast('浏览器未允许复制，请选中翻译文字后手动复制。'); }
 });
+$('#copy-proof').addEventListener('click', async () => {
+  const text = result?.proofSteps?.length ? proofToText(result.proofSteps) : result?.countermodel ? describeFirstOrderCountermodel(result, currentMeanings())?.narrative : '';
+  if (!text) return;
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+    else {
+      const textarea = document.createElement('textarea'); textarea.value = text;
+      textarea.style.cssText = 'position:fixed;left:-9999px;top:0'; document.body.append(textarea); textarea.select();
+      const copied = document.execCommand('copy'); textarea.remove();
+      if (!copied) throw new Error('Clipboard unavailable');
+    }
+    toast(result?.proofSteps?.length ? '自然演绎证明已复制。' : '反例模型说明已复制。');
+  } catch { toast('浏览器未允许复制，请选中文字后手动复制。'); }
+});
 for (const button of $$('[data-filter]')) button.addEventListener('click', () => setFilter(button.dataset.filter));
 $('#prev-page').addEventListener('click', () => { page--; renderTable(); $('#truth-table-container').scrollTop = 0; });
 $('#next-page').addEventListener('click', () => { page++; renderTable(); $('#truth-table-container').scrollTop = 0; });
@@ -596,5 +690,5 @@ if (/Mac|iPhone|iPad/.test(navigator.platform)) $('#shortcut-key').textContent =
 renderFields();
 renderTranslation();
 // Restore a complete argument with a fresh, locally computed result.
-if (fields().every(field => { try { parse(field.value); return true; } catch { return false; } })) validate();
-else { renderResult(); renderTable(); }
+if (fields().every(field => { try { parseFormula(field.value); return true; } catch { return false; } })) validate();
+else { renderResult(); renderProof(); renderTable(); }
