@@ -593,3 +593,13 @@ kbd { font-family: inherit; font-size: 8px; padding: 1px 3px; border: 1px solid 
   .proof-heading { flex-direction: column; }
   .proof-line { margin-left: calc(var(--depth, 0) * 10px); padding: 8px; }
 }
+
+/* Definition and equality symbols. */
+.relation-operators .operator-symbol { font-size: 21px; color: #6d5a9e; }
+@media (max-width: 580px) {
+  .relation-operators { margin-top: 7px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .relation-operators button { min-height: 52px; padding: 7px 2px; }
+  .relation-operators .operator-symbol { font-size: 18px; }
+  .relation-operators button > span:last-child { font-size: 7px; }
+  .operator-section { grid-row: 4 / 8; }
+}
