@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#7561d5">
+  <meta name="description" content="点选逻辑符号，构建你的论证。逻辑工坊提供论证有效性检验、完整真值表与中文自然语言翻译，所有计算均在浏览器本地完成。">
+  <title>逻辑工坊 · 论证有效性检验</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1Z"/><path d="M12 5v15M6 8h3M6 11h3M15 8h3M15 11h3"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 10h11a6 6 0 0 1 0 12" transform="translate(0 -3)"/><path d="m7 3-4 4 4 4"/></symbol>
+    <symbol id="i-backspace" viewBox="0 0 24 24"><path d="M9 5h12v14H9l-7-7 7-7Z"/><path d="m12 9 6 6m0-6-6 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></symbol>
+    <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M9 21h6M8 14a7 7 0 1 1 8 0c-1 1-1 2-1 4H9c0-2 0-3-1-4Z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/></symbol>
+    <symbol id="i-language" viewBox="0 0 24 24"><path d="M3 5h12M9 3v2M5 5c0 6 5 10 9 12M13 5c0 6-5 10-10 12M14 21l4-11 4 11M15.5 17h5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></symbol>
+    <symbol id="i-table" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16M15 9v11"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/></symbol>
+  </svg>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="./" aria-label="逻辑工坊首页">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="brand-name">逻辑工坊<span>LOGIC LAB</span></span>
+      </a>
+      <nav class="main-nav" aria-label="主导航">
+        <a class="nav-link active" href="#workbench" aria-current="page"><svg class="icon"><use href="#i-grid"/></svg>论证工作台</a>
+        <button class="nav-link" type="button" data-open-help><svg class="icon"><use href="#i-book"/></svg>使用指南</button>
+      </nav>
+      <span class="privacy-note"><svg class="icon"><use href="#i-shield"/></svg>本地计算，安心思考</span>
+    </div>
+  </header>
+
+  <main class="page-shell" id="workbench">
+    <section class="page-heading" aria-labelledby="page-title">
+      <div>
+        <div class="eyebrow"><span></span> THINK CLEARLY. REASON WELL.</div>
+        <h1 id="page-title">让每一步推理，<span>都有据可循。</span></h1>
+        <p>构建论证，检验有效性。把抽象的逻辑，变成看得懂的语言。</p>
+      </div>
+      <button class="button button-white new-argument" id="new-argument" type="button"><svg class="icon"><use href="#i-plus"/></svg>新建论证</button>
+    </section>
+
+    <div class="workspace-grid">
+      <aside class="palette-column" aria-label="逻辑符号输入面板">
+        <section class="card palette-card">
+          <div class="card-heading"><h2><span class="section-number">01</span>符号面板</h2><span class="small-tag">点击输入</span></div>
+          <p class="card-description">先选中一个输入框，再点选符号。</p>
+          <div class="editing-indicator"><span class="status-dot"></span>正在编辑：<strong id="active-field-label">前提 1</strong></div>
+          <div class="palette-section">
+            <h3>命题变量 <span>VARIABLES</span></h3>
+            <div class="variable-grid" id="variable-palette">
+              <button type="button" data-symbol="P" aria-label="插入变量 P">P</button>
+              <button type="button" data-symbol="Q" aria-label="插入变量 Q">Q</button>
+              <button type="button" data-symbol="R" aria-label="插入变量 R">R</button>
+              <button type="button" data-symbol="S" aria-label="插入变量 S">S</button>
+              <button type="button" data-symbol="A" aria-label="插入变量 A">A</button>
+              <button type="button" data-symbol="B" aria-label="插入变量 B">B</button>
+              <button type="button" data-symbol="C" aria-label="插入变量 C">C</button>
+              <button type="button" data-symbol="D" aria-label="插入变量 D">D</button>
+            </div>
+          </div>
+          <div class="palette-section operator-section">
+            <h3>逻辑连接词 <span>CONNECTIVES</span></h3>
+            <div class="operator-grid">
+              <button type="button" data-symbol="¬" title="否定：并非 P"><span class="operator-symbol">¬</span><span>否定<small>并非</small></span></button>
+              <button type="button" data-symbol="∧" title="合取：P 并且 Q"><span class="operator-symbol">∧</span><span>合取<small>并且</small></span></button>
+              <button type="button" data-symbol="∨" title="相容析取：P 或者 Q，也可以同时成立"><span class="operator-symbol">∨</span><span>析取<small>或者</small></span></button>
+              <button type="button" data-symbol="→" title="实质蕴涵：如果 P，那么 Q"><span class="operator-symbol">→</span><span>蕴涵<small>如果…那么</small></span></button>
+              <button type="button" data-symbol="↔" title="等价：P 当且仅当 Q"><span class="operator-symbol">↔</span><span>等价<small>当且仅当</small></span></button>
+              <button type="button" data-symbol="()" title="插入一对括号，限定运算范围"><span class="operator-symbol">( )</span><span>括号<small>组合命题</small></span></button>
+            </div>
+            <div class="constant-grid">
+              <button type="button" data-symbol="⊤"><span>⊤</span>恒真</button>
+              <button type="button" data-symbol="⊥"><span>⊥</span>恒假</button>
+            </div>
+          </div>
+          <div class="palette-section editing-section">
+            <h3>编辑工具 <span>EDIT</span></h3>
+            <div class="edit-grid">
+              <button id="undo-button" type="button" title="撤销当前输入框的上一次编辑"><svg class="icon"><use href="#i-undo"/></svg>撤销</button>
+              <button id="backspace-button" type="button" title="删除光标前的字符"><svg class="icon"><use href="#i-backspace"/></svg>退格</button>
+              <button id="clear-button" type="button" title="清空当前输入框"><svg class="icon"><use href="#i-trash"/></svg>清空</button>
+            </div>
+          </div>
+          <div class="keyboard-hint"><svg class="icon"><use href="#i-info"/></svg><span>也可以直接键盘输入<br><code>! &amp; | -&gt; &lt;-&gt;</code> 会自动识别</span></div>
+        </section>
+        <div class="thinking-note"><svg class="icon"><use href="#i-bulb"/></svg><div><strong>有效，不等于真实。</strong><p>有效性检验的是推理形式，<br>而不是前提在现实中的真假。</p></div></div>
+      </aside>
+
+      <section class="card editor-card" aria-labelledby="editor-title">
+        <div class="card-heading"><h2><span class="section-number">02</span><span id="editor-title">构建你的论证</span></h2><span class="small-tag">命题逻辑</span></div>
+        <p class="card-description">写下已知的前提，以及你想推出的结论。</p>
+        <div class="example-picker"><svg class="icon"><use href="#i-spark"/></svg><label for="example-select">不妨从一个例子开始</label><div class="select-wrap"><select id="example-select" aria-label="载入示例论证"><option value="mp">肯定前件</option><optgroup label="有效论证"><option value="mp">肯定前件 · Modus ponens</option><option value="mt">否定后件 · Modus tollens</option><option value="hs">假言三段论</option><option value="ds">选言三段论</option><option value="cd">二难推理</option><option value="conj">合取引入</option><option value="explosion">矛盾前提</option></optgroup><optgroup label="无效论证"><option value="ac">肯定后件谬误</option><option value="da">否定前件谬误</option></optgroup><option value="custom" disabled>自定义论证</option></select></div></div>
+        <div class="field-section-label"><span>前提</span><span>PREMISES</span><span class="field-label-line"></span></div>
+        <div id="premises" class="premises"></div>
+        <button class="add-premise" id="add-premise" type="button"><svg class="icon"><use href="#i-plus"/></svg>添加前提<span id="premise-count">1 / 8</span></button>
+        <div class="therefore-divider" aria-hidden="true"><span></span><b>∴</b><span></span></div>
+        <div id="conclusion"></div>
+        <div class="editor-bottom">
+          <button class="button button-primary validate-button" id="validate-button" type="button"><svg class="icon"><use href="#i-check-circle"/></svg><span>验证论证</span><svg class="icon trailing-icon"><use href="#i-arrow"/></svg></button>
+          <div class="validation-footnote"><span id="save-status"><span class="status-dot"></span>自动保存在此浏览器</span><span><kbd id="shortcut-key">Ctrl</kbd> + <kbd>Enter</kbd> 验证</span></div>
+        </div>
+      </section>
+
+      <aside class="insights-column" aria-label="验证结果与自然语言翻译">
+        <section class="card result-card" id="result-card" aria-labelledby="result-title">
+          <div class="card-heading"><h2><span class="section-number">03</span><span id="result-title">检验结果</span></h2><span class="result-status-tag" id="result-status-tag">已验证</span></div>
+          <div id="result-content" role="status" aria-live="polite" aria-atomic="true"></div>
+        </section>
+        <section class="card translation-card" aria-labelledby="translation-title">
+          <div class="card-heading"><h2><svg class="icon heading-icon"><use href="#i-language"/></svg><span id="translation-title">让逻辑说人话</span></h2><button class="icon-button" id="copy-translation" type="button" aria-label="复制自然语言翻译" title="复制翻译"><svg class="icon"><use href="#i-copy"/></svg></button></div>
+          <p class="card-description">符号的另一种读法，一样的推理。</p>
+          <div id="translation-content" class="translation-content" aria-live="polite"></div>
+          <div class="meaning-footer"><span id="meaning-summary">使用示例命题含义</span><button class="text-button" id="edit-meanings" type="button"><svg class="icon"><use href="#i-settings"/></svg>编辑含义</button></div>
+        </section>
+      </aside>
+
+      <section class="card truth-card" aria-labelledby="truth-title">
+        <div class="truth-heading"><div><h2 id="truth-title"><svg class="icon heading-icon"><use href="#i-table"/></svg>真值表<span class="small-tag" id="truth-count">4 种赋值</span></h2><p class="card-description">逐一检查所有可能，让反例无处藏身。</p></div><button class="button button-small button-white" id="export-table" type="button"><svg class="icon"><use href="#i-download"/></svg>导出 CSV</button></div>
+        <div class="table-toolbar"><div class="table-filters" role="group" aria-label="筛选真值表"><button type="button" class="selected" data-filter="all" aria-pressed="true">全部赋值<span id="all-row-count">4</span></button><button type="button" data-filter="critical" aria-pressed="false">前提全真<span id="critical-row-count">1</span></button><button type="button" data-filter="counterexample" aria-pressed="false">反例<span id="counterexample-count">0</span></button></div><span class="table-legend"><i></i>浅绿色行：前提全部为真</span></div>
+        <div id="truth-table-container" class="truth-table-container"></div>
+        <div class="table-footer"><span><b>T</b> 为真 <span class="legend-separator">/</span> <b>F</b> 为假<span class="table-footer-explanation"> · 只有“前提全真、结论为假”的行，才能推翻论证。</span></span><div class="pagination" id="pagination"><button class="icon-button" id="prev-page" type="button" aria-label="上一页"><svg class="icon rotate-180"><use href="#i-chevron"/></svg></button><span id="page-label">1 / 1</span><button class="icon-button" id="next-page" type="button" aria-label="下一页"><svg class="icon"><use href="#i-chevron"/></svg></button></div></div>
+      </section>
+    </div>
+    <footer class="site-footer"><span><span class="footer-mark">∴</span> 逻辑工坊 <span class="footer-dot">·</span> 给思考一点确定性</span><span>经典命题逻辑 <span class="footer-dot">/</span> 为好奇心而造 <svg class="icon"><use href="#i-spark"/></svg></span></footer>
+  </main>
+
+  <dialog id="help-dialog" class="modal help-modal" aria-labelledby="help-title">
+    <div class="modal-heading"><div><span class="eyebrow">A LITTLE GUIDE</span><h2 id="help-title">从这里，开始清晰思考。</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="关闭使用指南"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <div class="guide-steps"><div><span>1</span><h3>构建论证</h3><p>点击前提或结论输入框，再点选变量和连接词。每条前提与结论都应是一条完整的命题公式。</p></div><div><span>2</span><h3>验证有效性</h3><p>点击“验证论证”。只要不存在“所有前提都真、结论却假”的情况，论证就是有效的。</p></div><div><span>3</span><h3>读懂结果</h3><p>查看中文翻译与真值表。无效论证会给出反例；编辑命题含义，即可用自己的语句阅读论证。</p></div></div>
+    <h3 class="guide-section-title">连接词速查</h3>
+    <div class="guide-table-wrap"><table class="guide-table"><thead><tr><th>符号</th><th>名称</th><th>自然语言</th><th>何时为真</th></tr></thead><tbody><tr><td>¬P</td><td>否定</td><td>并非 P</td><td>P 为假</td></tr><tr><td>P ∧ Q</td><td>合取</td><td>P，并且 Q</td><td>两者都真</td></tr><tr><td>P ∨ Q</td><td>相容析取</td><td>P，或者 Q</td><td>至少一个为真</td></tr><tr><td>P → Q</td><td>实质蕴涵</td><td>如果 P，那么 Q</td><td>P 为假，或 Q 为真</td></tr><tr><td>P ↔ Q</td><td>等价</td><td>P，当且仅当 Q</td><td>两者真假相同</td></tr></tbody></table></div>
+    <div class="guide-note"><svg class="icon"><use href="#i-info"/></svg><p><strong>几个小约定</strong><br>运算优先级：¬ &gt; ∧ &gt; ∨ &gt; → &gt; ↔；用括号消除歧义。→ 右结合。“或者”允许两者同时成立；→ 表示实质蕴涵，不表示因果关系。前提互相矛盾时，经典逻辑下论证有效，但不代表结论真实。空前提的论证有效，当且仅当结论是重言式。</p></div>
+    <p class="guide-scope">适用范围：经典二值命题逻辑，最多 10 个变量、8 条前提。不支持谓词、量词（∀ / ∃）或模态词；自然语言翻译是按连接词逐层转换，不是对现实事实的判断。本站不使用 AI，也不上传你的输入。</p>
+    <button class="button button-primary guide-done" type="button" data-close-dialog>明白了，开始推理<svg class="icon"><use href="#i-arrow"/></svg></button>
+  </dialog>
+
+  <dialog id="meanings-dialog" class="modal meanings-modal" aria-labelledby="meanings-title">
+    <div class="modal-heading"><div><span class="eyebrow">MAKE IT YOURS</span><h2 id="meanings-title">给每个命题，一个含义。</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="关闭命题含义编辑"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <p class="modal-description">例如，把 P 定义为“今天下雨”。变量含义只影响翻译，不影响论证的有效性。</p>
+    <form id="meanings-form"><div id="meaning-fields"></div><label class="checkbox-label"><input type="checkbox" id="use-meanings" checked>在翻译中使用命题含义<span>关闭后保留 P、Q 等变量</span></label><div class="modal-actions"><button class="button button-white" id="reset-meanings" type="button">恢复默认含义</button><button class="button button-primary" type="submit">保存含义<svg class="icon"><use href="#i-check"/></svg></button></div></form>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <noscript><div class="noscript-notice">逻辑工坊需要 JavaScript 才能进行本地计算。请在浏览器中启用 JavaScript 后刷新页面。</div></noscript>
+</body>
+</html>
