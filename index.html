@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#7561d5">
-  <meta name="description" content="点选逻辑符号，构建你的论证。逻辑工坊提供论证有效性检验、完整真值表与中文自然语言翻译，所有计算均在浏览器本地完成。">
+  <meta name="description" content="点选逻辑符号，构建你的论证。逻辑工坊提供论证有效性检验、完整真值表与无效论证的中文反例解释。计算在本地完成，小模型仅在授权后按需下载。">
   <title>逻辑工坊 · 论证有效性检验</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
@@ -90,6 +90,13 @@
               <button type="button" data-symbol="↔" title="等价：P 当且仅当 Q"><span class="operator-symbol">↔</span><span>等价<small>当且仅当</small></span></button>
               <button type="button" data-symbol="()" title="插入一对括号，限定运算范围"><span class="operator-symbol">( )</span><span>括号<small>组合命题</small></span></button>
             </div>
+            <h3 class="extended-label">扩展连接词 <span>EXTENDED</span></h3>
+            <div class="operator-grid extended-operators">
+              <button type="button" data-symbol="⊕" title="异或：恰好一个为真"><span class="operator-symbol">⊕</span><span>异或<small>恰好一个</small></span></button>
+              <button type="button" data-symbol="↑" title="与非：并非两者都真"><span class="operator-symbol">↑</span><span>与非<small>不同时为真</small></span></button>
+              <button type="button" data-symbol="↓" title="或非：两者都为假"><span class="operator-symbol">↓</span><span>或非<small>两者都不真</small></span></button>
+              <button type="button" data-symbol="←" title="反向蕴涵：如果 Q，那么 P"><span class="operator-symbol">←</span><span>反蕴涵<small>如果右，那么左</small></span></button>
+            </div>
             <div class="constant-grid">
               <button type="button" data-symbol="⊤"><span>⊤</span>恒真</button>
               <button type="button" data-symbol="⊥"><span>⊥</span>恒假</button>
@@ -109,9 +116,9 @@
       </aside>
 
       <section class="card editor-card" aria-labelledby="editor-title">
-        <div class="card-heading"><h2><span class="section-number">02</span><span id="editor-title">构建你的论证</span></h2><span class="small-tag">命题逻辑</span></div>
+        <div class="card-heading"><h2><span class="section-number">02</span><span id="editor-title">构建你的论证</span></h2><button class="text-button" id="edit-meanings" type="button"><svg class="icon"><use href="#i-settings"/></svg>命题含义</button></div>
         <p class="card-description">写下已知的前提，以及你想推出的结论。</p>
-        <div class="example-picker"><svg class="icon"><use href="#i-spark"/></svg><label for="example-select">不妨从一个例子开始</label><div class="select-wrap"><select id="example-select" aria-label="载入示例论证"><option value="mp">肯定前件</option><optgroup label="有效论证"><option value="mp">肯定前件 · Modus ponens</option><option value="mt">否定后件 · Modus tollens</option><option value="hs">假言三段论</option><option value="ds">选言三段论</option><option value="cd">二难推理</option><option value="conj">合取引入</option><option value="explosion">矛盾前提</option></optgroup><optgroup label="无效论证"><option value="ac">肯定后件谬误</option><option value="da">否定前件谬误</option></optgroup><option value="custom" disabled>自定义论证</option></select></div></div>
+        <div class="example-picker"><svg class="icon"><use href="#i-spark"/></svg><label for="example-select">不妨从一个例子开始</label><div class="select-wrap"><select id="example-select" aria-label="载入示例论证"><option value="mp">肯定前件</option><optgroup label="有效论证"><option value="mp">肯定前件 · Modus ponens</option><option value="mt">否定后件 · Modus tollens</option><option value="hs">假言三段论</option><option value="ds">选言三段论</option><option value="cd">二难推理</option><option value="conj">合取引入</option><option value="explosion">矛盾前提</option><option value="xor">异或选言</option><option value="nand">与非德摩根律</option></optgroup><optgroup label="无效论证"><option value="ac">肯定后件谬误</option><option value="da">否定前件谬误</option><option value="xor-fallacy">把相容析取当异或</option><option value="nand-fallacy">误用与非</option></optgroup><option value="custom" disabled>自定义论证</option></select></div></div>
         <div class="field-section-label"><span>前提</span><span>PREMISES</span><span class="field-label-line"></span></div>
         <div id="premises" class="premises"></div>
         <button class="add-premise" id="add-premise" type="button"><svg class="icon"><use href="#i-plus"/></svg>添加前提<span id="premise-count">1 / 8</span></button>
@@ -128,18 +135,27 @@
           <div class="card-heading"><h2><span class="section-number">03</span><span id="result-title">检验结果</span></h2><span class="result-status-tag" id="result-status-tag">已验证</span></div>
           <div id="result-content" role="status" aria-live="polite" aria-atomic="true"></div>
         </section>
-        <section class="card translation-card" aria-labelledby="translation-title">
-          <div class="card-heading"><h2><svg class="icon heading-icon"><use href="#i-language"/></svg><span id="translation-title">让逻辑说人话</span></h2><button class="icon-button" id="copy-translation" type="button" aria-label="复制自然语言翻译" title="复制翻译"><svg class="icon"><use href="#i-copy"/></svg></button></div>
-          <p class="card-description">符号的另一种读法，一样的推理。</p>
-          <div id="translation-content" class="translation-content" aria-live="polite"></div>
-          <div class="meaning-footer"><span id="meaning-summary">使用示例命题含义</span><button class="text-button" id="edit-meanings" type="button"><svg class="icon"><use href="#i-settings"/></svg>编辑含义</button></div>
+        <section class="card translation-card" id="translation-card" aria-labelledby="translation-title" hidden>
+          <div class="card-heading"><h2><svg class="icon heading-icon"><use href="#i-language"/></svg><span id="translation-title">这个推理，哪里跳步了？</span></h2><button class="icon-button" id="copy-translation" type="button" aria-label="复制自然语言翻译" title="复制翻译"><svg class="icon"><use href="#i-copy"/></svg></button></div>
+          <p class="card-description">只在无效时展开，把推理的跳步说清楚。</p>
+          <div class="invalid-only-label"><span></span>真值表已找到反例</div>
+          <div id="translation-content" class="translation-content"></div>
+          <div class="model-panel">
+            <div class="model-heading"><span><svg class="icon"><use href="#i-spark"/></svg>本地小模型</span><span class="small-tag">Qwen2.5 · 0.5B</span></div>
+            <p>把已验证的反例改写得更通俗。模型不改判有效性，也不证明现实中的结论为假。</p>
+            <div class="model-controls"><button class="button button-primary button-small" id="enable-model" type="button"><svg class="icon"><use href="#i-download"/></svg><span>下载并启用小模型</span></button><button class="text-button" id="cancel-model" type="button" hidden>停止 / 卸载</button></div>
+            <div id="model-progress" class="model-progress" hidden><progress max="1" value="0" aria-label="模型下载进度"></progress><span></span></div>
+            <p id="model-status" class="model-status" role="status">未下载权重。仅在点击启用后联网下载，随后在本机推理。</p>
+            <div id="model-output" class="model-output" hidden><span class="model-output-label">模型改写 · 请与上方已验证反例核对</span><p></p></div>
+            <div class="model-bottom"><span>浏览器缓存 · 不上传公式</span><button id="clear-model-cache" class="text-button" type="button">清除模型缓存</button></div>
+          </div>
         </section>
       </aside>
 
       <section class="card truth-card" aria-labelledby="truth-title">
         <div class="truth-heading"><div><h2 id="truth-title"><svg class="icon heading-icon"><use href="#i-table"/></svg>真值表<span class="small-tag" id="truth-count">4 种赋值</span></h2><p class="card-description">逐一检查所有可能，让反例无处藏身。</p></div><button class="button button-small button-white" id="export-table" type="button"><svg class="icon"><use href="#i-download"/></svg>导出 CSV</button></div>
         <div class="table-toolbar"><div class="table-filters" role="group" aria-label="筛选真值表"><button type="button" class="selected" data-filter="all" aria-pressed="true">全部赋值<span id="all-row-count">4</span></button><button type="button" data-filter="critical" aria-pressed="false">前提全真<span id="critical-row-count">1</span></button><button type="button" data-filter="counterexample" aria-pressed="false">反例<span id="counterexample-count">0</span></button></div><span class="table-legend"><i></i>浅绿色行：前提全部为真</span></div>
-        <div id="truth-table-container" class="truth-table-container"></div>
+        <div id="truth-table-container" class="truth-table-container" tabindex="0" role="region" aria-label="真值表，可横向滚动"></div>
         <div class="table-footer"><span><b>T</b> 为真 <span class="legend-separator">/</span> <b>F</b> 为假<span class="table-footer-explanation"> · 只有“前提全真、结论为假”的行，才能推翻论证。</span></span><div class="pagination" id="pagination"><button class="icon-button" id="prev-page" type="button" aria-label="上一页"><svg class="icon rotate-180"><use href="#i-chevron"/></svg></button><span id="page-label">1 / 1</span><button class="icon-button" id="next-page" type="button" aria-label="下一页"><svg class="icon"><use href="#i-chevron"/></svg></button></div></div>
       </section>
     </div>
@@ -148,11 +164,11 @@
 
   <dialog id="help-dialog" class="modal help-modal" aria-labelledby="help-title">
     <div class="modal-heading"><div><span class="eyebrow">A LITTLE GUIDE</span><h2 id="help-title">从这里，开始清晰思考。</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="关闭使用指南"><svg class="icon"><use href="#i-x"/></svg></button></div>
-    <div class="guide-steps"><div><span>1</span><h3>构建论证</h3><p>点击前提或结论输入框，再点选变量和连接词。每条前提与结论都应是一条完整的命题公式。</p></div><div><span>2</span><h3>验证有效性</h3><p>点击“验证论证”。只要不存在“所有前提都真、结论却假”的情况，论证就是有效的。</p></div><div><span>3</span><h3>读懂结果</h3><p>查看中文翻译与真值表。无效论证会给出反例；编辑命题含义，即可用自己的语句阅读论证。</p></div></div>
+    <div class="guide-steps"><div><span>1</span><h3>构建论证</h3><p>点击前提或结论输入框，再点选变量和连接词。每条前提与结论都应是一条完整的命题公式。</p></div><div><span>2</span><h3>验证有效性</h3><p>点击“验证论证”。只要不存在“所有前提都真、结论却假”的情况，论证就是有效的。</p></div><div><span>3</span><h3>读懂结果</h3><p>有效论证只显示验证结果。无效时才展示反例的中文解释；可授权下载小模型，在本机进一步改写。</p></div></div>
     <h3 class="guide-section-title">连接词速查</h3>
-    <div class="guide-table-wrap"><table class="guide-table"><thead><tr><th>符号</th><th>名称</th><th>自然语言</th><th>何时为真</th></tr></thead><tbody><tr><td>¬P</td><td>否定</td><td>并非 P</td><td>P 为假</td></tr><tr><td>P ∧ Q</td><td>合取</td><td>P，并且 Q</td><td>两者都真</td></tr><tr><td>P ∨ Q</td><td>相容析取</td><td>P，或者 Q</td><td>至少一个为真</td></tr><tr><td>P → Q</td><td>实质蕴涵</td><td>如果 P，那么 Q</td><td>P 为假，或 Q 为真</td></tr><tr><td>P ↔ Q</td><td>等价</td><td>P，当且仅当 Q</td><td>两者真假相同</td></tr></tbody></table></div>
-    <div class="guide-note"><svg class="icon"><use href="#i-info"/></svg><p><strong>几个小约定</strong><br>运算优先级：¬ &gt; ∧ &gt; ∨ &gt; → &gt; ↔；用括号消除歧义。→ 右结合。“或者”允许两者同时成立；→ 表示实质蕴涵，不表示因果关系。前提互相矛盾时，经典逻辑下论证有效，但不代表结论真实。空前提的论证有效，当且仅当结论是重言式。</p></div>
-    <p class="guide-scope">适用范围：经典二值命题逻辑，最多 10 个变量、8 条前提。不支持谓词、量词（∀ / ∃）或模态词；自然语言翻译是按连接词逐层转换，不是对现实事实的判断。本站不使用 AI，也不上传你的输入。</p>
+    <div class="guide-table-wrap"><table class="guide-table"><thead><tr><th>符号</th><th>名称</th><th>自然语言</th><th>何时为真</th></tr></thead><tbody><tr><td>¬P</td><td>否定</td><td>并非 P</td><td>P 为假</td></tr><tr><td>P ∧ Q</td><td>合取</td><td>P，并且 Q</td><td>两者都真</td></tr><tr><td>P ∨ Q</td><td>相容析取</td><td>P，或者 Q</td><td>至少一个为真</td></tr><tr><td>P → Q</td><td>实质蕴涵</td><td>如果 P，那么 Q</td><td>P 为假，或 Q 为真</td></tr><tr><td>P ↔ Q</td><td>等价</td><td>P，当且仅当 Q</td><td>两者真假相同</td></tr><tr><td>P ⊕ Q</td><td>异或</td><td>要么 P，要么 Q</td><td>恰好一个为真</td></tr><tr><td>P ↑ Q</td><td>与非</td><td>并非两者都真</td><td>至少一个为假</td></tr><tr><td>P ↓ Q</td><td>或非</td><td>两者都不真</td><td>两者都假</td></tr><tr><td>P ← Q</td><td>反向蕴涵</td><td>如果 Q，那么 P</td><td>Q 为假，或 P 为真</td></tr></tbody></table></div>
+    <div class="guide-note"><svg class="icon"><use href="#i-info"/></svg><p><strong>几个小约定</strong><br>运算优先级：¬ &gt; ∧/↑ &gt; ∨/⊕/↓ &gt; →/← &gt; ↔；用括号消除歧义。→ 右结合，← 左结合；混用两种箭头必须加括号。“或者”允许两者同时成立；→ 表示实质蕴涵，不表示因果关系。前提互相矛盾时，经典逻辑下论证有效，但不代表结论真实。空前提的论证有效，当且仅当结论是重言式。</p></div>
+    <p class="guide-scope">适用范围：经典二值命题逻辑，最多 10 个变量、8 条前提。不支持谓词、量词（∀ / ∃）或模态词；自然语言翻译是按连接词逐层转换，不是对现实事实的判断。小模型只解释无效论证的反例，可能措辞不准；以真值表和反例直译为准。公式与含义不上传，权重从 Hugging Face 按需下载。</p>
     <button class="button button-primary guide-done" type="button" data-close-dialog>明白了，开始推理<svg class="icon"><use href="#i-arrow"/></svg></button>
   </dialog>
 
@@ -160,6 +176,12 @@
     <div class="modal-heading"><div><span class="eyebrow">MAKE IT YOURS</span><h2 id="meanings-title">给每个命题，一个含义。</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="关闭命题含义编辑"><svg class="icon"><use href="#i-x"/></svg></button></div>
     <p class="modal-description">例如，把 P 定义为“今天下雨”。变量含义只影响翻译，不影响论证的有效性。</p>
     <form id="meanings-form"><div id="meaning-fields"></div><label class="checkbox-label"><input type="checkbox" id="use-meanings" checked>在翻译中使用命题含义<span>关闭后保留 P、Q 等变量</span></label><div class="modal-actions"><button class="button button-white" id="reset-meanings" type="button">恢复默认含义</button><button class="button button-primary" type="submit">保存含义<svg class="icon"><use href="#i-check"/></svg></button></div></form>
+  </dialog>
+  <dialog id="model-dialog" class="modal meanings-modal" aria-labelledby="model-dialog-title">
+    <div class="modal-heading"><div><span class="eyebrow">LOCAL, BY CHOICE</span><h2 id="model-dialog-title">下载一个只解释反例的小模型。</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="关闭模型下载说明"><svg class="icon"><use href="#i-x"/></svg></button></div>
+    <p class="modal-description"><a href="https://huggingface.co/onnx-community/Qwen2.5-0.5B-Instruct" target="_blank" rel="noopener noreferrer">Qwen2.5-0.5B-Instruct</a> 的 ONNX 量化版本（Apache-2.0）。模型在你的浏览器中运行，不需要 API 密钥。只有当前论证已被真值表判定为无效，才会启动模型。</p>
+    <ul class="model-consent-list"><li>WebGPU 可用时下载约 460 MiB 权重；兼容模式约 750 MiB。另需 tokenizer 与约 28 MiB 的本地推理运行时。</li><li>首次加载可能较慢，建议桌面设备与至少 2 GB 可用内存。进度取决于网络和设备。</li><li>权重缓存在浏览器，之后无需重复下载；可随时停止、卸载或清除缓存。</li><li>下载会联系 Hugging Face，但公式、变量含义和生成内容不会发给服务器。</li><li>“明显不合理”指从前提硬推结论的跳步，不代表反例事实本身荒谬。模型输出仅作辅助。</li></ul>
+    <div class="modal-actions"><button class="button button-white" type="button" data-close-dialog>暂不下载</button><button class="button button-primary" id="confirm-model" type="button">同意下载并解释反例<svg class="icon"><use href="#i-arrow"/></svg></button></div>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <noscript><div class="noscript-notice">逻辑工坊需要 JavaScript 才能进行本地计算。请在浏览器中启用 JavaScript 后刷新页面。</div></noscript>
