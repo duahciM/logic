@@ -622,3 +622,23 @@ kbd { font-family: inherit; font-size: 8px; padding: 1px 3px; border: 1px solid 
   .model-bottom { flex-direction: column; align-items: flex-start; gap: 6px; }
   .api-confirm-target { grid-template-columns: 1fr; }
 }
+
+/* Whole-argument exploration keeps model prose and checked counterexamples separate. */
+.translation-card.llm-only .model-panel { border-top: 0; padding-top: 4px; }
+.llm-mode-hint { font-size: 10px; color: #6d5a88; line-height: 1.8; margin-top: 8px; }
+.argument-preview { margin-top: 10px; border: 1px solid #e6dfef; border-radius: 7px; background: #fbfaff; }
+.argument-preview summary { cursor: pointer; padding: 8px 10px; font-size: 10px; font-weight: 600; color: #5f4b82; }
+.argument-preview pre { margin: 0; padding: 0 10px 10px; max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; line-height: 1.7; color: #4f4463; }
+.candidate-review { margin-top: 12px; padding: 12px; border-radius: 7px; border: 1px solid #e6dfef; background: #f8f5fd; font-size: 11px; line-height: 1.8; color: #5f5273; overflow-wrap: anywhere; }
+.candidate-review strong { display: block; font-size: 12px; margin-bottom: 5px; }
+.candidate-review p { margin-top: 5px; }
+.candidate-review.good { border-color: #cde7d9; background: #f2fbf6; color: #245c43; }
+.candidate-review.warn { border-color: #efd9bd; background: #fff8ef; color: #7a4b16; }
+.candidate-review.neutral { border-color: #e2dcef; background: #f8f5fd; color: #5f5273; }
+.candidate-review-note { font-size: 10px; opacity: .9; }
+.candidate-truth-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 5px; }
+.candidate-truth-list li { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; border-top: 1px dashed rgba(95,82,115,.18); padding-top: 5px; }
+.candidate-truth-list code { font-family: 'Cambria Math', 'Noto Sans Math', Georgia, serif; overflow-wrap: anywhere; }
+@media (max-width: 580px) {
+  .candidate-truth-list li { align-items: flex-start; flex-direction: column; gap: 2px; }
+}

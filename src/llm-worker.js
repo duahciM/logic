@@ -1,7 +1,7 @@
-import { SYSTEM_PROMPT } from '../llm-prompt.js';
+import { buildMessages, isModelPayload } from '../llm-prompt.js';
 import { env, AutoTokenizer, AutoModelForCausalLM, TextGenerationPipeline, TextStreamer, InterruptableStoppingCriteria } from '@huggingface/transformers';
 
-// This module is imported only after explicit consent, and only for an invalid argument.
+// This module is imported only after explicit consent. Whole-argument output is a proposal, not a verdict.
 const MODEL_ID = 'onnx-community/Qwen2.5-0.5B-Instruct';
 const MODEL_REVISION = '22942cb7d7ba4cc81bb4673549ca4d4614469b5e';
 const wasmRoot = new URL('./', import.meta.url).href;
@@ -82,8 +82,9 @@ self.onmessage = async ({ data }) => {
   if (data.type !== 'generate') return;
   const id = ++generationId;
   try {
-    // A second independent guard: never load weights or run inference for valid input.
-    if (data.payload?.valid !== false || !data.payload?.counterexample) throw new Error('模型只解释已经由真值表确认的反例。');
+    // Legacy narration is invalid-only; whole-argument exploration is explicit and reviewed afterwards.
+    if (!isModelPayload(data.payload)) throw new Error('模型需要已验证反例，或明确标记的完整论证。');
+    const argumentMode = data.payload.mode === 'argument';
     const model = await load();
     if (id !== generationId) return;
     const stop = new InterruptableStoppingCriteria();
@@ -93,11 +94,8 @@ self.onmessage = async ({ data }) => {
       skip_prompt: true, skip_special_tokens: true,
       callback_function: text => { if (id === generationId) send({ type: 'token', id, text }); },
     });
-    const messages = [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: JSON.stringify(data.payload) },
-    ];
-    const output = await model(messages, { max_new_tokens: 260, do_sample: false, streamer, stopping_criteria: stop });
+    const messages = buildMessages(data.payload);
+    const output = await model(messages, { max_new_tokens: argumentMode ? 700 : 260, do_sample: false, streamer, stopping_criteria: stop });
     if (id !== generationId) return;
     const text = output[0]?.generated_text?.at(-1)?.content || '';
     if (!stop.interrupted && !text.trim()) throw new Error('模型未生成可用改写，请参考上方反例直译。');
