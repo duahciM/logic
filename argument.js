@@ -28,6 +28,11 @@ function parseAnyFol(source) {
   return { ast, formatted: formatFol(ast) };
 }
 
+function searchProof(premises, conclusion, options) {
+  try { return proveArgument(premises, conclusion, options); }
+  catch (error) { if (error.message === 'proof-search-limit') return null; throw error; }
+}
+
 export function analyzeArgument({ premises = [], conclusion = '' } = {}, options = {}) {
   if (!Array.isArray(premises) || premises.length > LIMITS.premises) throw new LogicError(`前提数量不能超过 ${LIMITS.premises} 条。`);
   const firstOrder = premises.some(isFirstOrderSource) || isFirstOrderSource(conclusion);
@@ -36,7 +41,7 @@ export function analyzeArgument({ premises = [], conclusion = '' } = {}, options
     const result = analyzePropositional({ premises, conclusion });
     const folPremises = result.premises.map(premise => propToFol(premise.ast));
     const folConclusion = propToFol(result.conclusion.ast);
-    const proof = proveArgument(folPremises, folConclusion, proofOptions);
+    const proof = searchProof(folPremises, folConclusion, proofOptions);
     return {
       ...result, kind: 'propositional', folPremises, folConclusion,
       proof: proof?.proof ?? null, proofSteps: proof?.steps ?? [], proofStats: proof?.stats ?? null,
@@ -54,7 +59,7 @@ export function analyzeArgument({ premises = [], conclusion = '' } = {}, options
   const folConclusion = parsedConclusion.ast;
   // Reject inconsistent predicate arities before proof/model search.
   describe({ type: 'and', left: folPremises.reduce((left, formula) => left ? { type: 'and', left, right: formula } : formula, { type: 'constant', value: true }), right: folConclusion });
-  const proof = proveArgument(folPremises, folConclusion, proofOptions);
+  const proof = searchProof(folPremises, folConclusion, proofOptions);
   let valid = null;
   let countermodelSearch = null;
   if (proof) valid = true;
