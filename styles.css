@@ -603,3 +603,22 @@ kbd { font-family: inherit; font-size: 8px; padding: 1px 3px; border: 1px solid 
   .relation-operators button > span:last-child { font-size: 7px; }
   .operator-section { grid-row: 4 / 8; }
 }
+
+/* Optional external API translation channel. */
+.llm-channel-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.llm-channel-row label { font-size: 10px; color: #6d5a88; font-weight: 600; }
+.llm-channel-row select { flex: 1; min-width: 150px; border: 1px solid #e6dfef; border-radius: 6px; padding: 7px 8px; font-size: 11px; color: #5f5273; background: #fff; }
+.model-bottom-actions { display: inline-flex; gap: 10px; align-items: center; }
+.api-form-grid { display: grid; gap: 13px; }
+.api-field { display: grid; gap: 6px; font-size: 12px; color: #6d5a88; font-weight: 600; }
+.api-field input, .api-field select { width: 100%; border: 1px solid #e6dfef; border-radius: 7px; padding: 10px 11px; font-size: 12px; color: #5f5273; background: #fff; font-weight: 400; }
+.api-field input::placeholder { color: #8a7a9d; }
+.api-hint { font-size: 10px; color: #776b84; line-height: 1.8; margin-top: -6px; }
+.api-config-error { min-height: 18px; font-size: 11px; color: #99455a; margin-top: 10px; }
+.api-confirm-target { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 10px; padding: 12px; border: 1px solid #eae1f5; background: #f8f5fd; border-radius: 8px; margin-bottom: 16px; font-size: 11px; color: #6d5a88; }
+.api-confirm-target code { font-family: 'Cambria Math', 'Noto Sans Math', Georgia, serif; overflow-wrap: anywhere; color: #4f4463; }
+@media (max-width: 580px) {
+  .llm-channel-row select { min-width: 100%; }
+  .model-bottom { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .api-confirm-target { grid-template-columns: 1fr; }
+}

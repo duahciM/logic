@@ -4,12 +4,14 @@ import { proofToText } from './natural-deduction.js';
 import { describeModel } from './countermodel.js';
 import { describeCounterexample, describeFirstOrderCountermodel, explanationKey } from './explanation.js';
 import { LocalExplainer } from './llm-client.js';
+import { ApiExplainer, API_PRESETS, normalizeApiConfig } from './api-client.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const escapeHTML = (value) => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const icon = (name, extra = '') => `<svg class="icon ${extra}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const STORAGE_KEY = 'logic-lab.workspace.v1';
+const API_STORAGE_KEY = 'logic-lab.llm-api.v1';
 const PAGE_SIZE = 32;
 const EXAMPLES = {
   mp: { name: '肯定前件', premises: ['P → Q', 'P'], conclusion: 'Q' },
@@ -89,7 +91,43 @@ let lastDeleted = null;
 let modelConsent = false;
 let currentExplanationKey = '';
 let modelText = '';
-const explainer = new LocalExplainer(handleModelEvent);
+let apiPreferences = loadApiPreferences();
+let llmChannel = apiPreferences.channel === 'api' ? 'api' : 'local';
+let apiSessionKey = '';
+let apiConsentTarget = '';
+const explainer = new LocalExplainer(event => handleModelEvent({ ...event, channel: 'local' }));
+const apiExplainer = new ApiExplainer(event => handleModelEvent({ ...event, channel: 'api' }));
+
+function loadApiPreferences() {
+  const fallback = { channel: 'local', preset: 'custom', baseUrl: '', model: '', remember: true };
+  try {
+    const saved = JSON.parse(localStorage.getItem(API_STORAGE_KEY));
+    if (!saved || saved.version !== 1) return fallback;
+    return {
+      channel: saved.channel === 'api' ? 'api' : 'local',
+      preset: Object.hasOwn(API_PRESETS, saved.preset) ? saved.preset : 'custom',
+      baseUrl: typeof saved.baseUrl === 'string' ? saved.baseUrl.slice(0, 2048) : '',
+      model: typeof saved.model === 'string' ? saved.model.slice(0, 120) : '',
+      remember: saved.remember !== false,
+    };
+  } catch { return fallback; }
+}
+function saveApiPreferences() {
+  try {
+    if (!apiPreferences.remember) { localStorage.removeItem(API_STORAGE_KEY); return; }
+    localStorage.setItem(API_STORAGE_KEY, JSON.stringify({
+      version: 1, channel: apiPreferences.channel, preset: apiPreferences.preset,
+      baseUrl: apiPreferences.baseUrl, model: apiPreferences.model, remember: true,
+    }));
+  } catch { /* Non-secret preferences are optional; the key is never stored here. */ }
+}
+function currentApiConfig() { return { baseUrl: apiPreferences.baseUrl, model: apiPreferences.model, apiKey: apiSessionKey }; }
+function apiTarget() { return `${apiPreferences.baseUrl}|${apiPreferences.model}`; }
+function apiSummaryText() {
+  try { return `${apiPreferences.model} · ${new URL(apiPreferences.baseUrl).host}`; }
+  catch { return '尚未配置 API'; }
+}
+function activeExplainer() { return llmChannel === 'api' ? apiExplainer : explainer; }
 
 function fields() { return [...state.premises, state.conclusion]; }
 function getField(id = activeId) { return fields().find(field => field.id === id); }
@@ -371,46 +409,114 @@ function resetModelUI() {
   $('#model-progress').hidden = true;
   $('#cancel-model').hidden = true;
   $('#cancel-model').textContent = '停止 / 卸载';
+  const api = llmChannel === 'api';
+  const firstOrder = result?.kind === 'first-order';
+  $('#local-controls').hidden = api || firstOrder;
+  $('#api-controls').hidden = !api;
+  $('#clear-model-cache').hidden = api;
+  $('#clear-api-key').hidden = !api || !apiSessionKey;
+  $('#llm-channel-tag').textContent = api ? '外部 API' : '本地小模型';
+  $('#llm-channel-description').textContent = api
+    ? '仅在你点击发送后，把当前已验证反例发送到你配置的 API。模型不改判有效性。'
+    : '把已验证的反例改写得更通俗。模型不改判有效性，也不证明现实中的结论为假。';
+  $('#model-privacy-note').textContent = api
+    ? '公式与反例会发送到所配 API · 密钥仅当前页面'
+    : '浏览器缓存 · 不上传公式';
   $('#enable-model').hidden = false;
   $('#enable-model span').textContent = '下载并启用小模型';
-  $('#model-status').textContent = '未加载模型。仅在点击启用后下载权重，随后在本机推理。';
+  $('#enable-api').hidden = false;
+  $('#enable-api span').textContent = '发送反例并改写';
+  if (api) {
+    $('#model-status').textContent = !apiPreferences.baseUrl || !apiPreferences.model
+      ? '尚未配置 API。点击“配置 API”填写地址和模型；保存配置不会发送请求。'
+      : `已配置 ${apiSummaryText()}。${apiSessionKey ? '密钥仅保存在当前页面内存。' : '未填入密钥；无认证接口可留空。'}点击发送后才会请求。`;
+  } else if (firstOrder) {
+    $('#model-status').textContent = '本地小模型目前只解释命题反例；可切换到 API 通道解释此有限模型。';
+  } else {
+    $('#model-status').textContent = '未加载模型。仅在点击启用后下载权重，随后在本机推理。';
+  }
+}
+function currentDescription() {
+  if (result?.valid !== false) return null;
+  return result.kind === 'first-order'
+    ? describeFirstOrderCountermodel(result, currentMeanings())
+    : describeCounterexample(result, currentMeanings());
 }
 function renderTranslation() {
   const invalid = result?.valid === false;
   $('#translation-card').hidden = !invalid;
-  const firstOrder = result?.kind === 'first-order';
-  $('#model-panel').hidden = firstOrder;
+  $('#model-panel').hidden = !invalid;
   if (!invalid) {
     currentExplanationKey = '';
     explainer.cancel();
+    apiExplainer.cancel();
     $('#translation-content').replaceChildren();
     $('#copy-translation').disabled = true;
     resetModelUI();
     return;
   }
+  const firstOrder = result.kind === 'first-order';
   const key = explanationKey(result, currentMeanings());
-  const description = firstOrder ? describeFirstOrderCountermodel(result, currentMeanings()) : describeCounterexample(result, currentMeanings());
+  const description = currentDescription();
   $('#invalid-only-label').innerHTML = `<span></span>${firstOrder ? '有限模型已找到反例' : '真值表已找到反例'}`;
   if (key !== currentExplanationKey) {
     explainer.cancel();
+    apiExplainer.cancel();
     currentExplanationKey = key;
     resetModelUI();
     $('#translation-content').textContent = description.narrative;
-    if (modelConsent && !firstOrder) startModel();
+    if (modelConsent && !firstOrder && llmChannel === 'local') startModel();
   }
   $('#copy-translation').disabled = false;
 }
 function startModel() {
-  if (result?.valid !== false || result.kind === 'first-order') return;
+  if (result?.valid !== false || result.kind === 'first-order' || llmChannel !== 'local') return;
   resetModelUI();
   $('#enable-model').hidden = true;
   $('#cancel-model').hidden = false;
   explainer.generate(describeCounterexample(result, currentMeanings()), currentExplanationKey);
 }
+function sendApiRequest() {
+  if (result?.valid !== false || llmChannel !== 'api') return;
+  let config;
+  try { config = normalizeApiConfig(currentApiConfig()); }
+  catch (error) { $('#model-status').textContent = error.message; openApiConfig(); return; }
+  resetModelUI();
+  $('#enable-api').hidden = true;
+  $('#cancel-model').hidden = false;
+  $('#cancel-model').textContent = '停止请求';
+  $('#model-status').textContent = '正在把你点击发送的已验证反例交给 API；有效性仍由本地引擎判定。';
+  apiExplainer.generate({ ...currentDescription(), kind: result.kind }, currentExplanationKey, currentApiConfig());
+}
+function requestApiGeneration() {
+  if (result?.valid !== false || llmChannel !== 'api') return;
+  let config;
+  try { config = normalizeApiConfig(currentApiConfig()); }
+  catch (error) { $('#model-status').textContent = error.message; openApiConfig(); return; }
+  if (apiConsentTarget !== apiTarget()) {
+    $('#api-confirm-endpoint').textContent = config.endpoint;
+    $('#api-confirm-model').textContent = config.model;
+    $('#api-confirm-dialog').showModal();
+    return;
+  }
+  sendApiRequest();
+}
+function switchChannel(channel) {
+  const next = channel === 'api' ? 'api' : 'local';
+  if (next === llmChannel) return;
+  activeExplainer().cancel();
+  llmChannel = next;
+  apiPreferences.channel = next;
+  saveApiPreferences();
+  resetModelUI();
+  if (result?.valid === false && next === 'local' && modelConsent && result.kind !== 'first-order') startModel();
+}
 function handleModelEvent(event) {
-  if (event.key !== currentExplanationKey || result?.valid !== false || result.kind === 'first-order') return;
+  if (event.key !== currentExplanationKey || result?.valid !== false || event.channel !== llmChannel) return;
+  const api = event.channel === 'api';
+  if (!api && result.kind === 'first-order') return;
   const status = $('#model-status');
-  if (event.type === 'progress') {
+  if (event.type === 'progress' && !api) {
     $('#model-progress').hidden = false;
     const bar = $('#model-progress progress');
     if (event.total) { bar.value = event.loaded / event.total; } else bar.removeAttribute('value');
@@ -418,33 +524,54 @@ function handleModelEvent(event) {
     $('#model-progress span').textContent = event.total ? `${mb(event.loaded)} / ${mb(event.total)} MiB` : `${mb(event.loaded)} MiB`;
     status.textContent = '按需下载模型文件；公式仍留在本机。';
   } else if (event.type === 'status') {
-    status.textContent = ({ starting: '正在启动本地推理线程…', runtime: '正在准备推理运行时…', initializing: '正在将模型载入本机内存…', generating: '正在改写已验证的反例，不重新判断有效性…', fallback: 'WebGPU 初始化失败，尝试 CPU 兼容模式（需要额外下载兼容权重）…' })[event.stage] || '正在准备…';
-  } else if (event.type === 'token') {
+    status.textContent = ({
+      starting: '正在启动本地推理线程…', runtime: '正在准备推理运行时…', initializing: '正在将模型载入本机内存…',
+      connecting: '正在连接你配置的 API…',
+      generating: api ? 'API 正在改写已验证的反例，不重新判断有效性…' : '正在改写已验证的反例，不重新判断有效性…',
+      fallback: 'WebGPU 初始化失败，尝试 CPU 兼容模式（需要额外下载兼容权重）…',
+    })[event.stage] || '正在准备…';
+  } else if (event.type === 'token' && !api) {
     modelText += event.text;
     $('#model-output').hidden = false;
     $('#model-output p').textContent = modelText;
   } else if (event.type === 'done') {
     $('#model-progress').hidden = true;
-    modelText = event.text.trim();
+    modelText = String(event.text || '').trim();
     if (!modelText || modelText.length > 1200 || !/[\u4e00-\u9fff]/.test(modelText)) {
       status.textContent = '模型未给出可用改写，已保留上方准确的反例直译。可以重试。';
       $('#model-output').hidden = true;
     } else {
+      $('#model-output').hidden = false;
       $('#model-output p').textContent = modelText;
-      status.textContent = `改写完成（${event.device || '本机'}）。请以上方反例为准。`;
-      $('#enable-model span').textContent = '重新生成改写';
-      $('#enable-model').hidden = false;
-      $('#cancel-model').hidden = false;
+      status.textContent = `改写完成（${event.device || (api ? 'API' : '本机')}）。请以上方反例为准。`;
+      const button = api ? $('#enable-api') : $('#enable-model');
+      button.querySelector('span').textContent = '重新生成改写';
+      button.hidden = false;
+      $('#cancel-model').hidden = api;
       $('#cancel-model').textContent = '卸载模型';
     }
   } else if (event.type === 'error') {
-    status.textContent = `模型暂不可用：${event.message} 上方反例直译仍然有效。`;
+    status.textContent = `${api ? 'API' : '模型'}暂不可用：${event.message} 上方反例直译仍然有效。`;
     $('#model-output').hidden = true;
-    $('#enable-model').hidden = false;
-    $('#enable-model span').textContent = '重试本地模型';
+    const button = api ? $('#enable-api') : $('#enable-model');
+    button.hidden = false;
+    button.querySelector('span').textContent = api ? '重试 API 请求' : '重试本地模型';
     $('#cancel-model').hidden = true;
-    explainer.cancel();
+    activeExplainer().cancel();
   }
+}
+function openApiConfig() {
+  $('#api-preset').value = apiPreferences.preset;
+  $('#api-base-url').value = apiPreferences.baseUrl;
+  $('#api-model').value = apiPreferences.model;
+  $('#api-key').value = '';
+  $('#api-remember').checked = apiPreferences.remember;
+  $('#api-clear-key').checked = false;
+  $('#api-key-status').textContent = apiSessionKey
+    ? '当前页面已填入密钥。留空可保留；勾选“清除密钥”可移除。'
+    : '当前页面没有密钥。无认证接口可留空；密钥不会写入浏览器存储。';
+  $('#api-config-error').textContent = '';
+  $('#api-config-dialog').showModal();
 }
 function usedVariables() {
   return [...new Set(fields().flatMap(field => field.value.match(/[A-Z]/g) || []))].sort();
@@ -646,17 +773,66 @@ $('#prev-page').addEventListener('click', () => { page--; renderTable(); $('#tru
 $('#next-page').addEventListener('click', () => { page++; renderTable(); $('#truth-table-container').scrollTop = 0; });
 $('#export-table').addEventListener('click', exportCSV);
 $('#edit-meanings').addEventListener('click', openMeanings);
+$('#llm-channel').addEventListener('change', event => switchChannel(event.target.value));
+$('#configure-api').addEventListener('click', openApiConfig);
 $('#enable-model').addEventListener('click', () => {
-  if (result?.valid !== false) return;
+  if (result?.valid !== false || llmChannel !== 'local') return;
   if (modelConsent) startModel(); else $('#model-dialog').showModal();
 });
 $('#confirm-model').addEventListener('click', () => {
   if (result?.valid !== false) { $('#model-dialog').close(); return; }
   modelConsent = true; $('#model-dialog').close(); startModel();
 });
+$('#enable-api').addEventListener('click', requestApiGeneration);
+$('#confirm-api').addEventListener('click', () => {
+  if (result?.valid !== false || llmChannel !== 'api') { $('#api-confirm-dialog').close(); return; }
+  try { normalizeApiConfig(currentApiConfig()); }
+  catch (error) { $('#api-confirm-dialog').close(); $('#model-status').textContent = error.message; openApiConfig(); return; }
+  apiConsentTarget = apiTarget();
+  $('#api-confirm-dialog').close();
+  sendApiRequest();
+});
 $('#cancel-model').addEventListener('click', () => {
-  explainer.cancel(); modelConsent = false; resetModelUI();
-  $('#model-status').textContent = '已停止并卸载内存中的模型。已下载的缓存仍保留，下次需重新点击启用。';
+  if (llmChannel === 'api') {
+    apiExplainer.cancel(); resetModelUI();
+    $('#model-status').textContent = '已停止 API 请求。未完成的响应会被忽略；上方反例直译不受影响。';
+  } else {
+    explainer.cancel(); modelConsent = false; resetModelUI();
+    $('#model-status').textContent = '已停止并卸载内存中的模型。已下载的缓存仍保留，下次需重新点击启用。';
+  }
+});
+$('#clear-api-key').addEventListener('click', () => {
+  apiSessionKey = ''; apiConsentTarget = '';
+  apiExplainer.cancel(); resetModelUI();
+  toast('已清除当前页面内存中的 API 密钥。地址和模型等非秘密配置不受影响。');
+});
+$('#api-preset').addEventListener('change', event => {
+  const preset = API_PRESETS[event.target.value];
+  if (!preset || event.target.value === 'custom') return;
+  $('#api-base-url').value = preset.baseUrl;
+  $('#api-model').value = preset.model;
+});
+$('#api-config-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const preset = $('#api-preset').value;
+  const baseUrl = $('#api-base-url').value.trim();
+  const model = $('#api-model').value.trim();
+  try { normalizeApiConfig({ baseUrl, model, apiKey: '' }); }
+  catch (error) { $('#api-config-error').textContent = error.message; return; }
+  const enteredKey = $('#api-key').value.trim();
+  if ($('#api-clear-key').checked) apiSessionKey = '';
+  else if (enteredKey) apiSessionKey = enteredKey;
+  apiPreferences = { channel: 'api', preset: Object.hasOwn(API_PRESETS, preset) ? preset : 'custom', baseUrl, model, remember: $('#api-remember').checked };
+  apiConsentTarget = '';
+  saveApiPreferences();
+  llmChannel = 'api';
+  $('#llm-channel').value = 'api';
+  $('#api-key').value = '';
+  $('#api-config-dialog').close();
+  explainer.cancel();
+  apiExplainer.cancel();
+  resetModelUI();
+  toast('API 配置已保存。密钥仅在当前页面内存；尚未发送任何反例。');
 });
 $('#clear-model-cache').addEventListener('click', async () => {
   modelConsent = false;
@@ -693,9 +869,10 @@ document.addEventListener('selectionchange', () => {
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !$$('dialog[open]').length) { event.preventDefault(); validate(true); }
 });
-window.addEventListener('pagehide', saveState);
+window.addEventListener('pagehide', () => { saveState(); apiSessionKey = ''; apiExplainer.cancel(); explainer.cancel(); });
 if (/Mac|iPhone|iPad/.test(navigator.platform)) $('#shortcut-key').textContent = '⌘';
 
+$('#llm-channel').value = llmChannel;
 renderFields();
 renderTranslation();
 // Restore a complete argument with a fresh, locally computed result.
