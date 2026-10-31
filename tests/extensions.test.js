@@ -63,7 +63,7 @@ test('new examples really have their advertised validity', () => {
   assert.equal(analyze({ premises: ['P ↑ Q'], conclusion: '¬P ∧ ¬Q' }).valid, false);
 });
 
-test('only invalid arguments produce model payloads and deterministic explanations', () => {
+test('only invalid arguments produce deterministic counterexample explanations', () => {
   const valid = analyze({ premises: ['P'], conclusion: 'P' });
   assert.equal(describeCounterexample(valid), null);
   assert.equal(explanationKey(valid, {}), '');
