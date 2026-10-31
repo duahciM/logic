@@ -5,6 +5,7 @@ import { describeModel } from './countermodel.js';
 import { describeCounterexample, describeFirstOrderCountermodel, explanationKey } from './explanation.js';
 import { LocalExplainer } from './llm-client.js';
 import { ApiExplainer, API_PRESETS, normalizeApiConfig } from './api-client.js';
+import { buildArgumentPayload, parseArgumentResponse, verifyCounterexample } from './llm-argument.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -91,6 +92,10 @@ let lastDeleted = null;
 let modelConsent = false;
 let currentExplanationKey = '';
 let modelText = '';
+let llmMode = 'verified';
+let activeLlmKey = '';
+let modelReview = null;
+let modelStructured = false;
 let apiPreferences = loadApiPreferences();
 let llmChannel = apiPreferences.channel === 'api' ? 'api' : 'local';
 let apiSessionKey = '';
@@ -387,7 +392,7 @@ function renderFirstOrderResult() {
   const explanation = valid === true
     ? `已构造并通过校验的<strong>自然演绎证明</strong>，共 ${proofSteps.length} 步。证明只使用语法规则，不依赖真值表枚举。`
     : valid === false
-      ? `找到一个<strong>有限反例模型</strong>（论域大小 ${countermodel.domain.length}）：所有前提为真，结论为假。只要存在一个模型反例，论证就无效。`
+      ? `找到一个<strong>有限反例模型</strong>（论域大小 ${countermodel.domain.length}）：所有前提为真，结论为假。${countermodelSearch?.source === 'llm-proposed-verified' ? '该候选由 LLM 提出，并已通过程序逐条复核。' : '只要存在一个模型反例，论证就无效。'}`
       : `有界自然演绎证明搜索未找到证明，有限反例模型搜索（论域至多 ${countermodelSearch?.maxDomain ?? 3}）也未找到反例。一阶逻辑不可判定，这<strong>不等于</strong>论证有效或无效。`;
   const metrics = valid === true
     ? `<div class="result-metric"><strong>${proofSteps.length}</strong><span>证明步骤</span></div><div class="result-metric"><strong>${result.premises.length}</strong><span>前提</span></div><div class="result-metric"><strong>${proofStats?.nodes ?? '—'}</strong><span>搜索节点</span></div>`
@@ -402,36 +407,91 @@ function renderFirstOrderResult() {
 }
 
 function currentMeanings() { return state.useMeanings ? state.meanings : {}; }
+function argumentSnapshotKey() {
+  if (!result) return '';
+  return JSON.stringify({
+    kind: result.kind,
+    premises: result.premises.map(premise => premise.formatted),
+    conclusion: result.conclusion.formatted,
+    meanings: currentMeanings(),
+  });
+}
+function currentLlmKey() {
+  if (!result) return '';
+  return JSON.stringify({
+    mode: llmMode, channel: llmChannel, argument: argumentSnapshotKey(),
+    target: llmChannel === 'api' ? apiTarget() : 'local',
+    verified: llmMode === 'verified' ? explanationKey(result, currentMeanings()) : '',
+  });
+}
+function canGenerate() {
+  if (!result) return false;
+  if (llmMode === 'argument') return true;
+  return result.valid === false && (llmChannel === 'api' || result.kind !== 'first-order');
+}
+function currentLlmPayload() {
+  if (!canGenerate()) return null;
+  if (llmMode === 'argument') return buildArgumentPayload(result, currentMeanings());
+  const description = currentDescription();
+  return description ? { ...description, kind: result.kind } : null;
+}
+function apiConsentKey() {
+  return llmMode === 'argument' ? `${apiTarget()}|argument|${argumentSnapshotKey()}` : `${apiTarget()}|verified`;
+}
 function resetModelUI() {
   modelText = '';
+  modelReview = null;
+  modelStructured = false;
   $('#model-output').hidden = true;
   $('#model-output p').textContent = '';
+  $('#candidate-review').hidden = true;
+  $('#candidate-review').replaceChildren();
   $('#model-progress').hidden = true;
   $('#cancel-model').hidden = true;
   $('#cancel-model').textContent = '停止 / 卸载';
   const api = llmChannel === 'api';
+  const argument = llmMode === 'argument';
   const firstOrder = result?.kind === 'first-order';
-  $('#local-controls').hidden = api || firstOrder;
+  $('#llm-mode').value = llmMode;
+  $('#llm-channel').value = llmChannel;
+  $('#local-controls').hidden = api || (!argument && firstOrder);
   $('#api-controls').hidden = !api;
   $('#clear-model-cache').hidden = api;
   $('#clear-api-key').hidden = !api || !apiSessionKey;
   $('#llm-channel-tag').textContent = api ? '外部 API' : '本地小模型';
-  $('#llm-channel-description').textContent = api
-    ? '仅在你点击发送后，把当前已验证反例发送到你配置的 API。模型不改判有效性。'
-    : '把已验证的反例改写得更通俗。模型不改判有效性，也不证明现实中的结论为假。';
+  $('#llm-mode-hint').textContent = argument
+    ? '发送完整前提与结论，让模型自行选择解释方式并尝试构造反例；候选反例再由程序复核。'
+    : '只改写程序已经确认的反例，不把模型猜测当作证明。';
+  $('#llm-channel-description').textContent = argument
+    ? (api ? '仅在你点击发送并确认后，把当前完整论证发送到所配 API。' : '完整论证只在本机推理；模型不会上传你的公式。')
+    : (api ? '仅在你点击发送后，把当前已验证反例发送到你配置的 API。模型不改判有效性。' : '把已验证的反例改写得更通俗。模型不改判有效性，也不证明现实中的结论为假。');
   $('#model-privacy-note').textContent = api
-    ? '公式与反例会发送到所配 API · 密钥仅当前页面'
+    ? (argument ? '完整前提与结论会发送到所配 API · 密钥仅当前页面' : '公式与反例会发送到所配 API · 密钥仅当前页面')
     : '浏览器缓存 · 不上传公式';
   $('#enable-model').hidden = false;
-  $('#enable-model span').textContent = '下载并启用小模型';
+  $('#enable-model').disabled = !canGenerate();
+  $('#enable-model span').textContent = argument ? '下载并自主解释论证' : '下载并启用小模型';
   $('#enable-api').hidden = false;
-  $('#enable-api span').textContent = '发送反例并改写';
-  if (api) {
+  $('#enable-api').disabled = !canGenerate();
+  $('#enable-api span').textContent = argument ? '发送论证，让 LLM 解释' : '发送反例并改写';
+  $('#model-output .model-output-label').textContent = argument ? 'LLM 自主解释 · 候选反例单独复核' : '模型改写 · 请与上方已验证反例核对';
+  $('#argument-preview').hidden = !argument;
+  const payload = currentLlmPayload();
+  $('#argument-payload-preview').textContent = payload ? JSON.stringify(payload, null, 2) : '请先完成一次语法与有效性验证。';
+  if (!result) {
+    $('#model-status').textContent = '请先验证论证。完整论证模式可让 LLM 自主解释；反例改写模式只在无效时启用。';
+  } else if (argument) {
+    $('#model-status').textContent = api
+      ? (!apiPreferences.baseUrl || !apiPreferences.model ? '尚未配置 API。保存配置不会发送请求。' : `已配置 ${apiSummaryText()}。点击发送后才会请求；候选反例会由程序复核。`)
+      : '未加载模型。点击启用后才下载权重；小模型可能无法稳定输出结构化反例，建议优先使用 API 通道。';
+  } else if (api) {
     $('#model-status').textContent = !apiPreferences.baseUrl || !apiPreferences.model
       ? '尚未配置 API。点击“配置 API”填写地址和模型；保存配置不会发送请求。'
       : `已配置 ${apiSummaryText()}。${apiSessionKey ? '密钥仅保存在当前页面内存。' : '未填入密钥；无认证接口可留空。'}点击发送后才会请求。`;
   } else if (firstOrder) {
-    $('#model-status').textContent = '本地小模型目前只解释命题反例；可切换到 API 通道解释此有限模型。';
+    $('#model-status').textContent = '本地小模型目前只改写命题反例；可切换 API，或使用“完整论证”模式。';
+  } else if (result.valid !== false) {
+    $('#model-status').textContent = '本地引擎未判为无效，不会强迫模型编造反例。可切换“完整论证”让 LLM 自主解释。';
   } else {
     $('#model-status').textContent = '未加载模型。仅在点击启用后下载权重，随后在本机推理。';
   }
@@ -442,58 +502,78 @@ function currentDescription() {
     ? describeFirstOrderCountermodel(result, currentMeanings())
     : describeCounterexample(result, currentMeanings());
 }
-function renderTranslation() {
+function renderTranslation(preserveLlm = false) {
+  const hasResult = Boolean(result);
   const invalid = result?.valid === false;
-  $('#translation-card').hidden = !invalid;
-  $('#model-panel').hidden = !invalid;
-  if (!invalid) {
+  $('#translation-card').hidden = !hasResult;
+  $('#translation-card').classList.toggle('llm-only', !invalid);
+  $('#translation-title').textContent = llmMode === 'argument' ? '让 LLM 自己解释这个论证' : '这个推理，哪里跳步了？';
+  $('#translation-card .card-description').textContent = invalid
+    ? '上方是程序确认的反例直译；下方可选择 LLM 改写或自主解释。'
+    : '选择解释模式。完整论证模式会把前提和结论整体交给 LLM。';
+  $('#invalid-only-label').hidden = !invalid;
+  $('#translation-content').hidden = !invalid;
+  if (invalid) {
+    const firstOrder = result.kind === 'first-order';
+    currentExplanationKey = explanationKey(result, currentMeanings());
+    $('#invalid-only-label').innerHTML = `<span></span>${firstOrder ? '有限模型已找到反例' : '真值表已找到反例'}`;
+    $('#translation-content').textContent = currentDescription().narrative;
+    $('#copy-translation').disabled = false;
+  } else {
     currentExplanationKey = '';
-    explainer.cancel();
-    apiExplainer.cancel();
     $('#translation-content').replaceChildren();
     $('#copy-translation').disabled = true;
-    resetModelUI();
-    return;
   }
-  const firstOrder = result.kind === 'first-order';
-  const key = explanationKey(result, currentMeanings());
-  const description = currentDescription();
-  $('#invalid-only-label').innerHTML = `<span></span>${firstOrder ? '有限模型已找到反例' : '真值表已找到反例'}`;
-  if (key !== currentExplanationKey) {
+  if (!preserveLlm) renderLlmPanel();
+}
+function renderLlmPanel() {
+  const key = currentLlmKey();
+  if (key !== activeLlmKey || !activeLlmKey) {
     explainer.cancel();
     apiExplainer.cancel();
-    currentExplanationKey = key;
+    activeLlmKey = key;
     resetModelUI();
-    $('#translation-content').textContent = description.narrative;
-    if (modelConsent && !firstOrder && llmChannel === 'local') startModel();
   }
-  $('#copy-translation').disabled = false;
+  if (canGenerate() && llmMode === 'verified' && llmChannel === 'local' && modelConsent && result.kind !== 'first-order') startModel();
 }
 function startModel() {
-  if (result?.valid !== false || result.kind === 'first-order' || llmChannel !== 'local') return;
+  if (!canGenerate() || llmChannel !== 'local') return;
+  const payload = currentLlmPayload();
+  if (!payload) return;
   resetModelUI();
   $('#enable-model').hidden = true;
   $('#cancel-model').hidden = false;
-  explainer.generate(describeCounterexample(result, currentMeanings()), currentExplanationKey);
+  $('#model-status').textContent = llmMode === 'argument' ? '正在把完整论证交给本机模型；它会自行解释，候选反例随后复核。' : '正在改写已验证反例。';
+  explainer.generate(payload, activeLlmKey);
 }
 function sendApiRequest() {
-  if (result?.valid !== false || llmChannel !== 'api') return;
-  let config;
-  try { config = normalizeApiConfig(currentApiConfig()); }
+  if (!canGenerate() || llmChannel !== 'api') return;
+  try { normalizeApiConfig(currentApiConfig()); }
   catch (error) { $('#model-status').textContent = error.message; openApiConfig(); return; }
+  const payload = currentLlmPayload();
+  if (!payload) return;
   resetModelUI();
   $('#enable-api').hidden = true;
   $('#cancel-model').hidden = false;
   $('#cancel-model').textContent = '停止请求';
-  $('#model-status').textContent = '正在把你点击发送的已验证反例交给 API；有效性仍由本地引擎判定。';
-  apiExplainer.generate({ ...currentDescription(), kind: result.kind }, currentExplanationKey, currentApiConfig());
+  $('#model-status').textContent = llmMode === 'argument' ? '正在发送你确认的完整前提与结论；模型自行解释，程序随后复核候选反例。' : '正在把你点击发送的已验证反例交给 API；有效性仍由本地引擎判定。';
+  apiExplainer.generate(payload, activeLlmKey, currentApiConfig());
 }
 function requestApiGeneration() {
-  if (result?.valid !== false || llmChannel !== 'api') return;
+  if (!canGenerate() || llmChannel !== 'api') return;
   let config;
   try { config = normalizeApiConfig(currentApiConfig()); }
   catch (error) { $('#model-status').textContent = error.message; openApiConfig(); return; }
-  if (apiConsentTarget !== apiTarget()) {
+  if (apiConsentTarget !== apiConsentKey()) {
+    const argument = llmMode === 'argument';
+    $('#api-confirm-title').textContent = argument ? '把完整论证发送到这个 API？' : '把当前反例发送到这个 API？';
+    $('#api-confirm-description').textContent = argument
+      ? '模型会收到全部前提和结论，自行决定怎样解释，并尝试提出候选反例。候选不会直接改判有效性，程序会逐条复核。'
+      : '有效性已经由本地引擎判定。API 只负责改写下面这条已验证反例，不能改判有效性。';
+    $('#api-confirm-scope').textContent = argument
+      ? '会发送：当前论证的全部符号前提、结论、符号签名、可选含义提示和本地参考判定。不会发送完整真值表、证明搜索内部状态、其他论证或浏览器存储内容。'
+      : '会发送：当前公式的自然语言翻译、变量含义、反例赋值或有限模型解释。不会发送其他论证、完整真值表、证明搜索内部状态或浏览器存储内容。';
+    $('#confirm-api span').textContent = argument ? '同意并发送完整论证' : '同意并发送当前反例';
     $('#api-confirm-endpoint').textContent = config.endpoint;
     $('#api-confirm-model').textContent = config.model;
     $('#api-confirm-dialog').showModal();
@@ -508,13 +588,68 @@ function switchChannel(channel) {
   llmChannel = next;
   apiPreferences.channel = next;
   saveApiPreferences();
-  resetModelUI();
-  if (result?.valid === false && next === 'local' && modelConsent && result.kind !== 'first-order') startModel();
+  activeLlmKey = '';
+  renderLlmPanel();
+}
+function switchMode(mode) {
+  const next = mode === 'argument' ? 'argument' : 'verified';
+  if (next === llmMode) return;
+  activeExplainer().cancel();
+  llmMode = next;
+  activeLlmKey = '';
+  renderTranslation();
+}
+function renderCandidateReview(review) {
+  const node = $('#candidate-review');
+  if (!review) { node.hidden = true; node.replaceChildren(); return; }
+  const titles = {
+    verified: '反例复核成立 · 论证无效',
+    rejected: '候选反例不成立 · 不能据此判无效',
+    invalid: '候选格式未通过 · 未采信',
+    missing: '没有可复核候选 · 仅为模型解释',
+  };
+  const tone = review.status === 'verified' ? 'good' : review.status === 'missing' ? 'neutral' : 'warn';
+  let details = '';
+  if (review.values) {
+    details += `<div class="assignment-chips">${Object.entries(review.values).map(([name, value]) => `<span class="assignment-chip">${escapeHTML(name)} = ${value ? '真' : '假'}</span>`).join('')}</div>`;
+  }
+  if (review.model) {
+    const model = describeModel(review.model);
+    details += `<p>论域：${escapeHTML(model.elements)}${model.constants.length ? `；常项：${escapeHTML(model.constants.join('，'))}` : ''}${model.assignment.length ? `；自由变量：${escapeHTML(model.assignment.join('，'))}` : ''}</p>${model.predicates.length ? `<p>谓词：${escapeHTML(model.predicates.join('；'))}</p>` : ''}`;
+  }
+  if (review.premiseValues.length || review.conclusionValue !== null) {
+    details += `<ul class="candidate-truth-list">${result.premises.map((premise, index) => `<li><code>${escapeHTML(premise.formatted)}</code><span>前提 ${index + 1}：${review.premiseValues[index] ? '真' : '假'}</span></li>`).join('')}<li><code>${escapeHTML(result.conclusion.formatted)}</code><span>结论：${review.conclusionValue ? '真' : '假'}</span></li></ul>`;
+  }
+  node.className = `candidate-review ${tone}`;
+  node.innerHTML = `<strong>${titles[review.status] || titles.invalid}</strong><p>${escapeHTML(review.message)}</p>${details}<p class="candidate-review-note">${review.status === 'verified' ? '这一判定来自程序对候选的逐条求值，而不是模型的自称。' : '模型文字不能代替证明；请以上方本地引擎结果为准。'}</p>`;
+  node.hidden = false;
+}
+function adoptVerifiedCounterexample(review) {
+  if (review.status !== 'verified' || !result || result.valid === true) return;
+  if (result.kind === 'first-order' && result.valid === null && review.model) {
+    result = {
+      ...result, valid: false, countermodel: review.model, counterexamples: [review.model],
+      countermodelSearch: { ...(result.countermodelSearch || {}), found: true, source: 'llm-proposed-verified', model: review.model, premiseValues: review.premiseValues, conclusionValue: false, domainSize: review.model.domain.length },
+    };
+    renderResult(); renderProof(); renderTable(); renderTranslation(true);
+    const payload = currentLlmPayload();
+    if (payload) $('#argument-payload-preview').textContent = JSON.stringify(payload, null, 2);
+  }
+}
+function finishGeneration(event, api) {
+  if (llmMode === 'argument' && modelText) $('#copy-translation').disabled = false;
+  const button = api ? $('#enable-api') : $('#enable-model');
+  button.querySelector('span').textContent = llmMode === 'argument' ? '重新生成自主解释' : '重新生成改写';
+  button.hidden = false;
+  button.disabled = false;
+  $('#cancel-model').hidden = api;
+  $('#cancel-model').textContent = '卸载模型';
 }
 function handleModelEvent(event) {
-  if (event.key !== currentExplanationKey || result?.valid !== false || event.channel !== llmChannel) return;
+  if (event.key !== activeLlmKey || !result || event.channel !== llmChannel || !canGenerate()) return;
   const api = event.channel === 'api';
-  if (!api && result.kind === 'first-order') return;
+  const argument = llmMode === 'argument';
+  if (!api && !argument && result.kind === 'first-order') return;
   const status = $('#model-status');
   if (event.type === 'progress' && !api) {
     $('#model-progress').hidden = false;
@@ -527,15 +662,37 @@ function handleModelEvent(event) {
     status.textContent = ({
       starting: '正在启动本地推理线程…', runtime: '正在准备推理运行时…', initializing: '正在将模型载入本机内存…',
       connecting: '正在连接你配置的 API…',
-      generating: api ? 'API 正在改写已验证的反例，不重新判断有效性…' : '正在改写已验证的反例，不重新判断有效性…',
+      generating: argument ? '模型正在自行组织解释并尝试构造候选反例…' : (api ? 'API 正在改写已验证的反例，不重新判断有效性…' : '正在改写已验证的反例，不重新判断有效性…'),
       fallback: 'WebGPU 初始化失败，尝试 CPU 兼容模式（需要额外下载兼容权重）…',
     })[event.stage] || '正在准备…';
-  } else if (event.type === 'token' && !api) {
+  } else if (event.type === 'token' && !api && !argument) {
     modelText += event.text;
     $('#model-output').hidden = false;
     $('#model-output p').textContent = modelText;
   } else if (event.type === 'done') {
     $('#model-progress').hidden = true;
+    if (argument) {
+      const parsed = parseArgumentResponse(event.text);
+      const review = verifyCounterexample(result, parsed.counterexample);
+      if (!parsed.explanation && review.status === 'missing') {
+        status.textContent = '模型未给出可用解释或候选反例。可以重试，或查看本地引擎结果。';
+        $('#model-output').hidden = true;
+        finishGeneration(event, api);
+        return;
+      }
+      modelText = parsed.explanation || '模型给出了候选反例，解释见下方程序复核。';
+      modelStructured = parsed.structured;
+      modelReview = review;
+      adoptVerifiedCounterexample(review);
+      $('#model-output').hidden = false;
+      $('#model-output p').textContent = modelText;
+      renderCandidateReview(review);
+      status.textContent = review.status === 'verified'
+        ? `解释完成（${event.device || (api ? 'API' : '本机')}）。候选反例已通过程序复核，论证无效。`
+        : `解释完成（${event.device || (api ? 'API' : '本机')}）。${modelStructured ? '候选反例未通过复核' : '模型未输出结构化候选'}；有效性以本地引擎为准。`;
+      finishGeneration(event, api);
+      return;
+    }
     modelText = String(event.text || '').trim();
     if (!modelText || modelText.length > 1200 || !/[\u4e00-\u9fff]/.test(modelText)) {
       status.textContent = '模型未给出可用改写，已保留上方准确的反例直译。可以重试。';
@@ -544,17 +701,15 @@ function handleModelEvent(event) {
       $('#model-output').hidden = false;
       $('#model-output p').textContent = modelText;
       status.textContent = `改写完成（${event.device || (api ? 'API' : '本机')}）。请以上方反例为准。`;
-      const button = api ? $('#enable-api') : $('#enable-model');
-      button.querySelector('span').textContent = '重新生成改写';
-      button.hidden = false;
-      $('#cancel-model').hidden = api;
-      $('#cancel-model').textContent = '卸载模型';
+      finishGeneration(event, api);
     }
   } else if (event.type === 'error') {
-    status.textContent = `${api ? 'API' : '模型'}暂不可用：${event.message} 上方反例直译仍然有效。`;
+    status.textContent = `${api ? 'API' : '模型'}暂不可用：${event.message} ${argument ? '本地引擎结果不受影响。' : '上方反例直译仍然有效。'}`;
     $('#model-output').hidden = true;
+    $('#candidate-review').hidden = true;
     const button = api ? $('#enable-api') : $('#enable-model');
     button.hidden = false;
+    button.disabled = false;
     button.querySelector('span').textContent = api ? '重试 API 请求' : '重试本地模型';
     $('#cancel-model').hidden = true;
     activeExplainer().cancel();
@@ -741,8 +896,11 @@ $('#new-argument').addEventListener('click', () => {
   toast('新的思考，从这里开始。命题含义已为你保留。');
 });
 $('#copy-translation').addEventListener('click', async () => {
-  if (result?.valid !== false) return;
-  const text = $('#translation-content').textContent + (modelText ? `\n\n模型辅助改写（请核对）：\n${modelText}` : '');
+  if (!result) return;
+  const deterministic = result.valid === false ? $('#translation-content').textContent : '';
+  const review = modelReview ? `\n\n候选反例复核：${modelReview.message}` : '';
+  const text = [deterministic, modelText ? `LLM ${llmMode === 'argument' ? '自主解释' : '辅助改写'}（请核对）：\n${modelText}${review}` : ''].filter(Boolean).join('\n\n');
+  if (!text) return;
   try {
     if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
     else {
@@ -774,28 +932,29 @@ $('#next-page').addEventListener('click', () => { page++; renderTable(); $('#tru
 $('#export-table').addEventListener('click', exportCSV);
 $('#edit-meanings').addEventListener('click', openMeanings);
 $('#llm-channel').addEventListener('change', event => switchChannel(event.target.value));
+$('#llm-mode').addEventListener('change', event => switchMode(event.target.value));
 $('#configure-api').addEventListener('click', openApiConfig);
 $('#enable-model').addEventListener('click', () => {
-  if (result?.valid !== false || llmChannel !== 'local') return;
+  if (!canGenerate() || llmChannel !== 'local') return;
   if (modelConsent) startModel(); else $('#model-dialog').showModal();
 });
 $('#confirm-model').addEventListener('click', () => {
-  if (result?.valid !== false) { $('#model-dialog').close(); return; }
+  if (!canGenerate()) { $('#model-dialog').close(); return; }
   modelConsent = true; $('#model-dialog').close(); startModel();
 });
 $('#enable-api').addEventListener('click', requestApiGeneration);
 $('#confirm-api').addEventListener('click', () => {
-  if (result?.valid !== false || llmChannel !== 'api') { $('#api-confirm-dialog').close(); return; }
+  if (!canGenerate() || llmChannel !== 'api') { $('#api-confirm-dialog').close(); return; }
   try { normalizeApiConfig(currentApiConfig()); }
   catch (error) { $('#api-confirm-dialog').close(); $('#model-status').textContent = error.message; openApiConfig(); return; }
-  apiConsentTarget = apiTarget();
+  apiConsentTarget = apiConsentKey();
   $('#api-confirm-dialog').close();
   sendApiRequest();
 });
 $('#cancel-model').addEventListener('click', () => {
   if (llmChannel === 'api') {
     apiExplainer.cancel(); resetModelUI();
-    $('#model-status').textContent = '已停止 API 请求。未完成的响应会被忽略；上方反例直译不受影响。';
+    $('#model-status').textContent = `已停止 API 请求。未完成的响应会被忽略；${llmMode === 'argument' ? '本地引擎结果不受影响。' : '上方反例直译不受影响。'}`;
   } else {
     explainer.cancel(); modelConsent = false; resetModelUI();
     $('#model-status').textContent = '已停止并卸载内存中的模型。已下载的缓存仍保留，下次需重新点击启用。';
@@ -831,8 +990,9 @@ $('#api-config-form').addEventListener('submit', event => {
   $('#api-config-dialog').close();
   explainer.cancel();
   apiExplainer.cancel();
-  resetModelUI();
-  toast('API 配置已保存。密钥仅在当前页面内存；尚未发送任何反例。');
+  activeLlmKey = '';
+  renderLlmPanel();
+  toast('API 配置已保存。密钥仅在当前页面内存；尚未发送任何论证或反例。');
 });
 $('#clear-model-cache').addEventListener('click', async () => {
   modelConsent = false;
@@ -873,6 +1033,7 @@ window.addEventListener('pagehide', () => { saveState(); apiSessionKey = ''; api
 if (/Mac|iPhone|iPad/.test(navigator.platform)) $('#shortcut-key').textContent = '⌘';
 
 $('#llm-channel').value = llmChannel;
+$('#llm-mode').value = llmMode;
 renderFields();
 renderTranslation();
 // Restore a complete argument with a fresh, locally computed result.

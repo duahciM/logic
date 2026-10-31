@@ -1,4 +1,6 @@
 /** Lazy, consensual local inference. Importing this module performs no network requests. */
+import { isModelPayload } from './llm-prompt.js';
+
 export class LocalExplainer {
   constructor(onEvent) {
     this.worker = null;
@@ -33,7 +35,7 @@ export class LocalExplainer {
   }
 
   generate(payload, key) {
-    if (payload?.valid !== false) return;
+    if (!isModelPayload(payload)) return;
     this.cancel();
     this.key = key;
     this.busy = true;

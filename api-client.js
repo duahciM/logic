@@ -1,5 +1,5 @@
 /** Optional OpenAI-compatible API channel. Importing/configuring never sends a request. */
-import { buildMessages, isCounterexamplePayload, normalizeGeneratedText } from './llm-prompt.js';
+import { buildMessages, isModelPayload, normalizeGeneratedText } from './llm-prompt.js';
 
 export const API_PRESETS = Object.freeze({
   custom: { label: '自定义（OpenAI 兼容）', baseUrl: '', model: '' },
@@ -72,7 +72,8 @@ export class ApiExplainer {
   }
 
   async generate(payload, key, config) {
-    if (!isCounterexamplePayload(payload)) return;
+    if (!isModelPayload(payload)) return;
+    const argumentMode = payload.mode === 'argument';
     let normalized;
     try { normalized = normalizeApiConfig(config); }
     catch (error) { this.onEvent({ type: 'error', key, message: error.message }); return; }
@@ -98,7 +99,7 @@ export class ApiExplainer {
           messages: buildMessages(payload),
           stream: false,
           temperature: 0,
-          max_tokens: 600,
+          max_tokens: argumentMode ? 1600 : 600,
         }),
         signal: this.controller.signal,
         mode: 'cors',
@@ -113,8 +114,8 @@ export class ApiExplainer {
       try { data = await response.json(); }
       catch { throw new Error('API 返回的不是有效 JSON。请确认接口兼容 OpenAI Chat Completions。'); }
       if (id !== this.generationId) return;
-      const text = normalizeGeneratedText(extractText(data));
-      if (!text) throw new Error('API 未返回可用改写，请参考上方反例直译。');
+      const text = normalizeGeneratedText(extractText(data), argumentMode ? 6000 : 1200);
+      if (!text) throw new Error(argumentMode ? 'API 未返回可用解释，请重试或查看本地引擎结果。' : 'API 未返回可用改写，请参考上方反例直译。');
       this.onEvent({ type: 'done', key, text, device: `API · ${normalized.model}` });
     } catch (error) {
       if (id !== this.generationId) return;
